@@ -49,11 +49,11 @@ const EXERCISES = [
   { id: 'cable_pull_through',  name: 'Cable Pull-Through',               pattern: 'hinge',     equip: ['cable'],              knee_safe: true,  ankle_load: 'low',  sport: 'general',  diff: 1, fav: false },
 
   // ===== HAMSTRING ECCENTRIC (Day C — non-negotiable) =====
-  { id: 'nordic_curl',         name: 'Nordic Hamstring Curl',            pattern: 'hamstring_ecc', equip: ['bodyweight'],     knee_safe: true,  ankle_load: 'low',  sport: 'football', diff: 5, fav: false, note: 'Reduces hamstring injury risk by ~50% in soccer (Petersen).' },
+  { id: 'nordic_machine',      name: 'Nordic Curl Machine (loaded/assisted)', pattern: 'hamstring_ecc', equip: ['machine'], knee_safe: true, ankle_load: 'low', sport: 'football', diff: 4, fav: false, note: 'Bands or weighted vest to dial difficulty. Easier to overload than bodyweight.' },
+  { id: 'nordic_curl',         name: 'Nordic Hamstring Curl (bodyweight)', pattern: 'hamstring_ecc', equip: ['bodyweight'], knee_safe: true, ankle_load: 'low', sport: 'football', diff: 5, fav: false, note: 'Reduces hamstring injury risk by ~50% in soccer (Petersen).' },
   { id: 'slider_curl',         name: 'Sliding Leg Curl',                 pattern: 'hamstring_ecc', equip: ['bodyweight'],     knee_safe: true,  ankle_load: 'low',  sport: 'football', diff: 3, fav: false },
   { id: 'ghr',                 name: 'Glute-Ham Raise',                  pattern: 'hamstring_ecc', equip: ['machine'],        knee_safe: true,  ankle_load: 'low',  sport: 'football', diff: 4, fav: false },
   { id: 'lying_ham_curl',      name: 'Lying Leg Curl (machine)',         pattern: 'hamstring_ecc', equip: ['machine'],        knee_safe: true,  ankle_load: 'low',  sport: 'general',  diff: 1, fav: false },
-  { id: 'razor_curl',          name: 'Razor Curl',                       pattern: 'hamstring_ecc', equip: ['bodyweight'],     knee_safe: true,  ankle_load: 'low',  sport: 'football', diff: 4, fav: false },
 
   // ===== GLUTE =====
   { id: 'barbell_hip_thrust',  name: 'Barbell Hip Thrust',               pattern: 'glute',     equip: ['barbell'],            knee_safe: true,  ankle_load: 'low',  sport: 'football', diff: 3, fav: false },
@@ -198,6 +198,14 @@ const EXERCISES = [
   { id: 'intervals_4x4',       name: 'Norwegian 4×4 Intervals',          pattern: 'sprint',    equip: ['park'],               knee_safe: true,  ankle_load: 'mid',  sport: 'football', diff: 4, fav: false, note: '4min @ 90% HR / 3min easy x4.' },
   { id: 'yoyo_ir1',            name: 'Yo-Yo IR1 (or sim)',               pattern: 'sprint',    equip: ['park'],               knee_safe: true,  ankle_load: 'high', sport: 'football', diff: 4, fav: false },
 
+  // ===== SLED — leg day warm-up / post-activation potentiation (PAP) =====
+  { id: 'sled_push_heavy',     name: 'Heavy Sled Push (low handles)',    pattern: 'warmup_sled',  equip: ['sled'],           knee_safe: true,  ankle_load: 'mid', sport: 'football', diff: 3, fav: false, note: 'PAP for sprints + squats. 4-6 × 15m. Heavy load, full drive.' },
+  { id: 'sled_drag_backward',  name: 'Backward Sled Drag (VMO + quad)',  pattern: 'warmup_sled',  equip: ['sled'],           knee_safe: true,  ankle_load: 'mid', sport: 'football', diff: 2, fav: false, note: '3-5 × 20m. Sit low, walk backward. Spanish-squat-on-the-move.' },
+  { id: 'sled_drag_forward',   name: 'Forward Sled Drag (hamstring)',    pattern: 'warmup_sled',  equip: ['sled'],           knee_safe: true,  ankle_load: 'mid', sport: 'football', diff: 2, fav: false, note: '3-5 × 20m. Walk forward, drag steady. Hamstring blood + ankle prep.' },
+  { id: 'sled_march',          name: 'Sled March (knee drive)',          pattern: 'warmup_sled',  equip: ['sled'],           knee_safe: true,  ankle_load: 'mid', sport: 'football', diff: 2, fav: false, note: 'Moderate load. High knees, big steps. 3 × 20m.' },
+  { id: 'sled_sprint',         name: 'Sled Sprint (light, max effort)',  pattern: 'warmup_sled',  equip: ['sled'],           knee_safe: true,  ankle_load: 'high', sport: 'football', diff: 3, fav: false, note: '5-6 × 10-15m. LIGHT load, max acceleration.' },
+  { id: 'sled_rope_pull',      name: 'Sled Rope Pull (seated)',          pattern: 'warmup_sled',  equip: ['sled'],           knee_safe: true,  ankle_load: 'low', sport: 'general',  diff: 2, fav: false, note: 'Upper back + grip while legs anchor. 3 sets per side.' },
+
   // ===== HIP MOBILITY (Day A & C cool-down — keeps you fluid and football/tennis ready) =====
   { id: 'pigeon_pose',         name: '90/90 Pigeon Hold',                pattern: 'mobility_hip', equip: ['bodyweight'],     knee_safe: true,  ankle_load: 'low', sport: 'both',     diff: 2, fav: false, note: '60-90s each side. Sink the front shin, square the chest.' },
   { id: 'ninety_ninety',       name: '90/90 Switch (active)',            pattern: 'mobility_hip', equip: ['bodyweight'],     knee_safe: true,  ankle_load: 'low', sport: 'both',     diff: 2, fav: false, note: '8-12 controlled switches each side.' },
@@ -232,6 +240,29 @@ const EXERCISES = [
   { id: 'banded_ankle_ev',     name: 'Banded Ankle Eversion',            pattern: 'mobility',  equip: ['band'],               knee_safe: true,  ankle_load: 'low',  sport: 'both',     diff: 1, fav: false },
   { id: 'short_foot',          name: 'Short Foot / Arch Doming',         pattern: 'mobility',  equip: ['bodyweight'],         knee_safe: true,  ankle_load: 'low',  sport: 'both',     diff: 1, fav: false },
 ];
+
+// Auto-tag SECONDS-based exercises (holds, balances, mobility) — anything not rep-counted
+const SECONDS_IDS = new Set([
+  // Holds & balances
+  'rkc_plank','hollow_hold','l_sit','l_sit_hold','l_sit_pullup','copenhagen_plank','copenhagen_short','side_plank_abd',
+  'handstand_hold','handstand_practice','dead_hang','german_hang','tuck_planche','adv_tuck_planche',
+  'front_lever_tuck','front_lever_adv','front_lever_straddle','back_lever_tuck',
+  'sl_balance_eyes','bosu_squat',
+  // Hip mobility
+  'pigeon_pose','cossack_stretch','lizard_pose','frog_stretch','butterfly','deep_squat_hold','standing_hip_flexor','worlds_greatest','jefferson_curl',
+  // Neck/upper back mobility
+  'brettzel','doorway_chest_stretch','levator_stretch','foam_roll_thoracic',
+  // Sled (distance/time based)
+  'sled_push_heavy','sled_drag_backward','sled_drag_forward','sled_march','sled_sprint','sled_rope_pull',
+  // Conditioning
+  'zone2_30','intervals_4x4','tempo_run_100','yoyo_ir1','sprint_30m','hill_sprint','sprint_repeats_40',
+  'shuttle_5_10_5','cone_t_drill','ladder_drills','cod_box',
+  // Ankle prehab
+  'ankle_abc','short_foot',
+]);
+for (const ex of EXERCISES) {
+  ex.unit = SECONDS_IDS.has(ex.id) ? 'seconds' : 'reps';
+}
 
 // Auto-tag unilateral exercises by pattern + known IDs (so we don't have to mark every line)
 const UNILATERAL_IDS = new Set([
