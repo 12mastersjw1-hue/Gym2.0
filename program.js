@@ -37,11 +37,12 @@ const DAY_TEMPLATES = {
     name: 'Lower — Knee Dominant + Sprint Power',
     focus: 'Quad / glute / standing calf / plyo',
     slots: [
+      { id: 'a0', label: 'Sled — Warm-Up + PAP',      pattern: 'warmup_sled', baseSets: 3, repRange: '15-20m each way', tempo: 'X', rest: '60s', priority: 'warmup', biasNote: 'Heavy push for PAP + backward drag for VMO. Primes the squat.', skippable: true, preferBiasIds: ['sled_push_heavy','sled_drag_backward','sled_sprint','sled_march'] },
       { id: 'a1', label: 'Knee-Dominant Main',        pattern: 'squat_bi',    baseSets: 3, repRange: '5-8',   tempo: '3-1-X', rest: '2-3 min', priority: 'strength' },
-      { id: 'a2', label: 'Unilateral / VMO',          pattern: ['squat_uni','lunge'], baseSets: 3, repRange: '8-12', tempo: '3-1-1', rest: '90s', priority: 'hypertrophy', biasNote: 'Spanish squat or Bulgarian — knee gets stronger and safer.', preferBiasIds: ['spanish_squat','bulgarian_ss','rear_foot_db_ss','step_up','reverse_lunge'] },
-      { id: 'a3', label: 'Calf — Gastrocnemius',      pattern: 'calf_gastroc',baseSets: 4, repRange: '8-12',  tempo: '2-2-1', rest: '60-90s', priority: 'hypertrophy', biasNote: 'Off step. Full stretch. Pause 2s at bottom.', preferBiasIds: ['sl_calf_raise_db','standing_calf_raise'] },
+      { id: 'a2', label: 'Unilateral / VMO',          pattern: ['squat_uni','lunge'], baseSets: 3, repRange: '8-12/side', tempo: '3-1-1', rest: '90s', priority: 'hypertrophy', biasNote: 'Spanish squat or Bulgarian — knee gets stronger and safer.', preferBiasIds: ['spanish_squat','bulgarian_ss','rear_foot_db_ss','step_up','reverse_lunge'] },
+      { id: 'a3', label: 'Calf — Gastrocnemius',      pattern: 'calf_gastroc',baseSets: 4, repRange: '8-12',  tempo: '2-2-1', rest: '60-90s', priority: 'hypertrophy', biasNote: 'Off step. Full stretch. Pause 2s at bottom.', preferBiasIds: ['sl_calf_raise_db','standing_calf_raise'], supersetGroup: 'A1' },
+      { id: 'a5', label: 'Anti-Extension Core',       pattern: 'antiextension',baseSets:3, repRange: '8-15',  tempo: '2-1-1', rest: '45-60s', priority: 'core', supersetGroup: 'A1', biasNote: 'Paired with calves — core works while calves recover.' },
       { id: 'a4', label: 'Plyo / Power (quality)',    pattern: 'plyo',        baseSets: 4, repRange: '3-5',   tempo: 'X',     rest: '60-90s', priority: 'power' },
-      { id: 'a5', label: 'Anti-Extension Core',       pattern: 'antiextension',baseSets:3, repRange: '8-15',  tempo: '2-1-1', rest: '45-60s', priority: 'core' },
       { id: 'a6', label: 'Hip Mobility Cool-Down',    pattern: 'mobility_hip', baseSets: 2, repRange: '30-60s each', tempo: 'controlled', rest: '15s', priority: 'mobility', biasNote: 'Bookends the session. Keeps hips fluid for football/tennis movement.' },
     ],
   },
@@ -51,15 +52,14 @@ const DAY_TEMPLATES = {
     name: 'Upper — Calisthenics Skill + Strength + Mobility',
     focus: 'Skill (muscle-up/lever/handstand) → calisthenics strength → rotational → neck/upper-back counterbalance',
     slots: [
-      // SKILL slot — for calisthenics mode this is the headline of Day B
       { id: 'b0', label: 'Calisthenics Skill (fresh nervous system)', pattern: 'skill_cali', baseSets: 4, repRange: '3-5 reps OR 15-30s hold', tempo: 'controlled', rest: '90s-2min', priority: 'power', biasNote: 'Skill work. Fresh, not fatigued. Quality over quantity.', calisthenicsOnly: true },
-      { id: 'b1', label: 'Horizontal Push Main',      pattern: 'push_h',      baseSets: 3, repRange: '5-8',   tempo: '3-1-1', rest: '2 min',  priority: 'strength' },
-      { id: 'b2', label: 'Horizontal Pull Main',      pattern: 'pull_h',      baseSets: 3, repRange: '6-10',  tempo: '2-1-2', rest: '2 min',  priority: 'strength' },
-      { id: 'b3', label: 'Vertical Push',             pattern: 'push_v',      baseSets: 3, repRange: '8-12',  tempo: '2-1-1', rest: '90s',    priority: 'hypertrophy' },
-      { id: 'b4', label: 'Vertical Pull',             pattern: 'pull_v',      baseSets: 3, repRange: '6-10',  tempo: '2-1-2', rest: '90s',    priority: 'hypertrophy' },
+      { id: 'b1', label: 'Horizontal Push Main',      pattern: 'push_h',      baseSets: 3, repRange: '5-8',   tempo: '3-1-1', rest: '2 min',  priority: 'strength', supersetGroup: 'B1' },
+      { id: 'b2', label: 'Horizontal Pull Main',      pattern: 'pull_h',      baseSets: 3, repRange: '6-10',  tempo: '2-1-2', rest: '2 min',  priority: 'strength', supersetGroup: 'B1', biasNote: 'Paired with push — classic antagonist superset, no performance hit.' },
+      { id: 'b3', label: 'Vertical Push',             pattern: 'push_v',      baseSets: 3, repRange: '8-12',  tempo: '2-1-1', rest: '90s',    priority: 'hypertrophy', supersetGroup: 'B2' },
+      { id: 'b4', label: 'Vertical Pull',             pattern: 'pull_v',      baseSets: 3, repRange: '6-10',  tempo: '2-1-2', rest: '90s',    priority: 'hypertrophy', supersetGroup: 'B2' },
       { id: 'b5', label: 'Rotational Power (BOTH sides!)', pattern: 'rotation', baseSets: 3, repRange: '5/side', tempo: 'X', rest: '60s', priority: 'power', biasNote: 'Equal reps per side. Symmetry > weight.' },
-      { id: 'b6', label: 'Shoulder Prehab',           pattern: 'prehab_shoulder', baseSets: 2, repRange: '12-15', tempo: '2-2-1', rest: '45s', priority: 'prehab' },
-      { id: 'b7', label: 'Neck / Upper-Back Counterbalance', pattern: 'mobility_neck', baseSets: 2, repRange: 'see exercise', tempo: 'slow', rest: '30s', priority: 'mobility', biasNote: 'Offsets chest hypertrophy. Tension-headache prevention.' },
+      { id: 'b6', label: 'Shoulder Prehab',           pattern: 'prehab_shoulder', baseSets: 2, repRange: '12-15', tempo: '2-2-1', rest: '45s', priority: 'prehab', supersetGroup: 'B3' },
+      { id: 'b7', label: 'Neck / Upper-Back Counterbalance', pattern: 'mobility_neck', baseSets: 2, repRange: 'see exercise', tempo: 'slow', rest: '30s', priority: 'mobility', biasNote: 'Offsets chest hypertrophy. Tension-headache prevention.', supersetGroup: 'B3' },
     ],
   },
 
@@ -68,12 +68,13 @@ const DAY_TEMPLATES = {
     name: 'Lower — Hip Dominant + Posterior Chain',
     focus: 'Hamstrings / glutes / seated calf / adductors + hip mobility',
     slots: [
+      { id: 'c0', label: 'Sled — Warm-Up + PAP',      pattern: 'warmup_sled', baseSets: 3, repRange: '15-20m each way', tempo: 'X', rest: '60s', priority: 'warmup', biasNote: 'Backward drag for VMO + forward drag for hamstring blood.', skippable: true, preferBiasIds: ['sled_drag_backward','sled_drag_forward','sled_march'] },
       { id: 'c1', label: 'Hip Hinge Main',            pattern: 'hinge',       baseSets: 3, repRange: '5-8',   tempo: '3-0-1', rest: '2-3 min', priority: 'strength' },
-      { id: 'c2', label: 'Hamstring Eccentric',       pattern: 'hamstring_ecc', baseSets: 3, repRange: '5-8 (slow)', tempo: '5-0-1', rest: '90s', priority: 'prehab', biasNote: 'Nordics if you can. -50% hamstring injury risk in soccer.', preferBiasIds: ['nordic_curl','sl_rdl','razor_curl'] },
-      { id: 'c3', label: 'Glute (unilateral preferred)', pattern: 'glute',    baseSets: 3, repRange: '8-12',  tempo: '2-1-1', rest: '90s', priority: 'hypertrophy', preferBiasIds: ['sl_hip_thrust','b_stance_hip_thrust','glute_bridge_march'] },
-      { id: 'c4', label: 'Calf — Soleus',             pattern: 'calf_soleus', baseSets: 3, repRange: '15-25', tempo: '2-2-1', rest: '60s', priority: 'hypertrophy', biasNote: 'High reps. Long pause at stretch. Soleus is mostly slow-twitch.' },
-      { id: 'c5', label: 'Adductor / Copenhagen',     pattern: 'adductor',    baseSets: 3, repRange: '8-12 or 30s hold', tempo: 'controlled', rest: '60s', priority: 'prehab', biasNote: 'Copenhagen plank ~41% groin injury reduction.', preferBiasIds: ['copenhagen_plank','copenhagen_short'] },
-      { id: 'c6', label: 'Anti-Rotation Core',        pattern: 'antirotation', baseSets: 2, repRange: '8-12/side', tempo: '2-2-1', rest: '45s', priority: 'core' },
+      { id: 'c2', label: 'Hamstring Eccentric',       pattern: 'hamstring_ecc', baseSets: 3, repRange: '5-8 (slow)', tempo: '5-0-1', rest: '90s', priority: 'prehab', biasNote: 'Nordic machine if available — easier to dial load. -50% hamstring injury risk in soccer.', preferBiasIds: ['nordic_machine','nordic_curl','sl_rdl','ghr'] },
+      { id: 'c3', label: 'Glute (unilateral preferred)', pattern: 'glute',    baseSets: 3, repRange: '8-12/side', tempo: '2-1-1', rest: '90s', priority: 'hypertrophy', preferBiasIds: ['sl_hip_thrust','b_stance_hip_thrust','glute_bridge_march'], supersetGroup: 'C1' },
+      { id: 'c5', label: 'Adductor / Copenhagen',     pattern: 'adductor',    baseSets: 3, repRange: '8-12/side or 30s hold', tempo: 'controlled', rest: '60s', priority: 'prehab', biasNote: 'Copenhagen plank ~41% groin injury reduction.', preferBiasIds: ['copenhagen_plank','copenhagen_short'], supersetGroup: 'C1' },
+      { id: 'c4', label: 'Calf — Soleus',             pattern: 'calf_soleus', baseSets: 3, repRange: '15-25', tempo: '2-2-1', rest: '60s', priority: 'hypertrophy', biasNote: 'High reps. Long pause at stretch. Soleus is mostly slow-twitch.', supersetGroup: 'C2' },
+      { id: 'c6', label: 'Anti-Rotation Core',        pattern: 'antirotation', baseSets: 2, repRange: '8-12/side', tempo: '2-2-1', rest: '45s', priority: 'core', supersetGroup: 'C2' },
       { id: 'c7', label: 'Hip Opening Cool-Down',     pattern: 'mobility_hip', baseSets: 2, repRange: '30-60s each', tempo: 'controlled', rest: '15s', priority: 'mobility', biasNote: 'Soothes the hinge work. Keeps you bend-y.' },
     ],
   },
@@ -229,8 +230,12 @@ function buildSession(dayCode, weekNum, history, settings, log /* optional past 
       rir: weekCfg.rir,
       priority: slot.priority,
       biasNote: slot.biasNote || ex.note || '',
-      loadAdjustHint: weekCfg.loadMod, // 0.05 = +5% vs your last week's working load
-      recommendation: rec, // {weight, reps, rationale, lastWeight, lastReps, lastRir}
+      loadAdjustHint: weekCfg.loadMod,
+      recommendation: rec,
+      unit: ex.unit || 'reps',                  // 'reps' or 'seconds'
+      isUnilateral: !!ex.unilateral,            // show L/R inputs
+      supersetGroup: slot.supersetGroup || null, // e.g. 'A1' — pairs of slots
+      skippable: !!slot.skippable,              // sled etc. can be skipped if no equipment
     });
   }
   return session;
@@ -324,7 +329,7 @@ function suggestedAnchors(stylePref) {
     a3: 'sl_calf_raise_db',
     // Day C
     c1: stylePref === 'barbell' ? 'conv_deadlift' : 'rdl',
-    c2: 'nordic_curl',
+    c2: 'nordic_machine',  // prefer machine for easy load adjustment
     c4: 'seated_calf_raise',
     c5: 'copenhagen_plank',
   };
