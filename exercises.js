@@ -232,6 +232,16 @@ const EXERCISES = [
   { id: 'doorway_chest_stretch', name: 'Doorway Pec Stretch',            pattern: 'mobility_neck',equip: ['bodyweight'],     knee_safe: true,  ankle_load: 'low', sport: 'general',  diff: 1, fav: false, note: '45s each arm. Counters bench/push-up tightness.' },
   { id: 'levator_stretch',     name: 'Levator Scapulae Stretch',         pattern: 'mobility_neck',equip: ['bodyweight'],     knee_safe: true,  ankle_load: 'low', sport: 'general',  diff: 1, fav: false, note: 'Look at armpit + same-side hand pulls head. Tension-headache go-to.' },
 
+  // ===== SPORT SESSIONS — logged as time + RPE, for alt sessions =====
+  { id: 'tennis_match',        name: 'Tennis Match (singles)',           pattern: 'sport_session', equip: ['park'],          knee_safe: true,  ankle_load: 'high', sport: 'tennis',   diff: 4, fav: false, note: 'Log total minutes + RPE.' },
+  { id: 'tennis_hit',          name: 'Tennis Hit / Practice',            pattern: 'sport_session', equip: ['park'],          knee_safe: true,  ankle_load: 'high', sport: 'tennis',   diff: 3, fav: false },
+  { id: 'football_match',      name: 'Football Match',                   pattern: 'sport_session', equip: ['park'],          knee_safe: true,  ankle_load: 'high', sport: 'football', diff: 4, fav: false },
+  { id: 'football_training',   name: 'Football Training / 5-a-side',     pattern: 'sport_session', equip: ['park'],          knee_safe: true,  ankle_load: 'high', sport: 'football', diff: 3, fav: false },
+  { id: 'pilates_class',       name: 'Pilates Class',                    pattern: 'sport_session', equip: ['bodyweight'],    knee_safe: true,  ankle_load: 'low',  sport: 'general',  diff: 2, fav: false },
+  { id: 'mobility_flow',       name: 'Mobility / Yoga Flow',             pattern: 'sport_session', equip: ['bodyweight'],    knee_safe: true,  ankle_load: 'low',  sport: 'general',  diff: 1, fav: false },
+  { id: 'climbing_session',    name: 'Climbing / Bouldering',            pattern: 'sport_session', equip: ['park'],          knee_safe: true,  ankle_load: 'low',  sport: 'general',  diff: 3, fav: false },
+  { id: 'swim_session',        name: 'Swim Session',                     pattern: 'sport_session', equip: ['park'],          knee_safe: true,  ankle_load: 'low',  sport: 'general',  diff: 2, fav: false },
+
   // ===== ANKLE / FOOT PREHAB (right ankle priority) =====
   { id: 'sl_balance_eyes',     name: 'Single-Leg Balance — eyes closed', pattern: 'mobility',  equip: ['bodyweight'],         knee_safe: true,  ankle_load: 'high', sport: 'both',     diff: 2, fav: false, note: '45s x 3 each side.' },
   { id: 'bosu_squat',          name: 'BOSU Single-Leg Squat (shallow)',  pattern: 'mobility',  equip: ['bodyweight'],         knee_safe: true,  ankle_load: 'high', sport: 'both',     diff: 3, fav: false },
@@ -262,6 +272,60 @@ const SECONDS_IDS = new Set([
 ]);
 for (const ex of EXERCISES) {
   ex.unit = SECONDS_IDS.has(ex.id) ? 'seconds' : 'reps';
+}
+
+// =============================================================
+//  LOG MODE — how this exercise is logged + what inputs to show
+//
+//  'strength'   weight + reps + RIR        — loaded compound/accessory work
+//  'bw_reps'    reps + RIR                 — bodyweight pull-ups, push-ups, dips
+//  'hold'       seconds + effort (0-5)     — planks, handstands, levers, mobility holds
+//  'distance'   meters per trip + sets     — sled, sprints (each set = one rep/trip)
+//  'time'       minutes + RPE (1-10)       — Zone 2, intervals, tempo runs
+//  'quality'    reps only (no RIR)         — plyometrics, max-intent skill reps
+//  'completion' done toggle only           — practice sessions, warm-ups, agility flows
+// =============================================================
+const BW_REPS_IDS = new Set([
+  'pullup','chin_up','dips','weighted_pushup','archer_pushup','archer_pullup',
+  'typewriter_pullup','l_sit_pullup','explosive_pullup','one_arm_pu_progress',
+  'pseudo_planche_pu','ring_dip','ring_pushup','false_grip_row','archer_row',
+  'wall_hspu','pike_hspu_progress','pike_pushup','inverted_row','scap_pullup',
+  'muscle_up_bar','muscle_up_ring','mu_negatives','mu_transition_drill','pistol_squat',
+  'nordic_curl','razor_curl','copenhagen_short','copenhagen_plank',
+]);
+const QUALITY_IDS = new Set([
+  // Plyometrics — always max intent, no RIR concept
+  'broad_jump','box_jump','depth_drop','sl_pogo','lateral_bound','split_jump',
+  'tuck_jump','mb_chest_pass','mb_rot_throw','mb_scoop_throw','mb_overhead_slam',
+]);
+const DISTANCE_IDS = new Set([
+  // Sled + sprint (each "rep" = one trip)
+  'sled_push_heavy','sled_drag_backward','sled_drag_forward','sled_march',
+  'sled_sprint','sled_rope_pull',
+  'sprint_30m','hill_sprint','sprint_repeats_40',
+]);
+const TIME_IDS = new Set([
+  // Cardio + agility — log duration in minutes
+  'zone2_30','intervals_4x4','tempo_run_100','yoyo_ir1',
+  'shuttle_5_10_5','cone_t_drill','ladder_drills','cod_box',
+  // Sport sessions — duration of the activity
+  'tennis_match','tennis_hit','football_match','football_training',
+  'pilates_class','mobility_flow','climbing_session','swim_session',
+]);
+const COMPLETION_IDS = new Set([
+  // Just toggle done — practice sessions, mobility flows
+  'handstand_practice','ankle_abc','short_foot','hip_cars','neck_cars',
+  'banded_ankle_ev','tibialis_raise','banded_clam',
+]);
+
+for (const ex of EXERCISES) {
+  if (QUALITY_IDS.has(ex.id))         ex.logMode = 'quality';
+  else if (DISTANCE_IDS.has(ex.id))   ex.logMode = 'distance';
+  else if (TIME_IDS.has(ex.id))       ex.logMode = 'time';
+  else if (COMPLETION_IDS.has(ex.id)) ex.logMode = 'completion';
+  else if (BW_REPS_IDS.has(ex.id))    ex.logMode = 'bw_reps';
+  else if (ex.unit === 'seconds')     ex.logMode = 'hold';
+  else                                ex.logMode = 'strength';
 }
 
 // Auto-tag unilateral exercises by pattern + known IDs (so we don't have to mark every line)
