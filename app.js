@@ -265,10 +265,12 @@ function logSet(slotIdx, setIdx) {
     targetRepRange: slot.repRange,
     targetRir: slot.rir,
     note: set.note || '',
-    side: set.side || '',            // L / R / blank
-    measureUnit: slot.unit || 'reps',// reps or seconds
+    side: set.side || '',
+    measureUnit: slot.unit || 'reps',
     isUnilateral: !!slot.isUnilateral,
     supersetGroup: slot.supersetGroup || '',
+    sessionType: sess.isAlt ? 'alternative' : 'planned',
+    altTemplate: sess.altTemplate || '',
   };
   state.log.push(entry);
   saveState();
@@ -432,6 +434,22 @@ function renderHome() {
       )
     ),
     h('div', {class:'card'},
+      h('h2', null, 'Quick session (work gym, park, tennis, run)'),
+      h('p', {class:'muted small'}, 'Life happens. Pick a one-off session — doesn\'t affect your planned days.'),
+      h('div', {class:'alt-grid'},
+        ...Object.values(ALT_TEMPLATES).map(t =>
+          h('button', {class:'alt-card', onclick: () => startAltSession(t.id)},
+            h('div', {class:'alt-icon'}, t.icon || '⚡'),
+            h('div', null,
+              h('div', {class:'alt-name'}, t.name),
+              h('div', {class:'alt-duration muted small'}, t.duration),
+              h('div', {class:'alt-desc muted small'}, t.description),
+            ),
+          )
+        )
+      )
+    ),
+    h('div', {class:'card'},
       h('h2', null, 'Mesocycle controls'),
       h('div', {class:'row gap'},
         h('button', {class:'btn', onclick: advanceWeek}, 'Advance to next week →'),
@@ -439,6 +457,33 @@ function renderHome() {
       ),
     ),
   );
+}
+
+function startAltSession(templateId) {
+  applyFavorites();
+  const sess = buildAltSession(templateId, state.currentWeek, state.history, state.settings, state.log);
+  if (!sess) { alert('Could not build that template.'); return; }
+  sess.slots = sess.slots.map(s => {
+    const totalEntries = s.isUnilateral ? s.sets * 2 : s.sets;
+    const setLogs = Array.from({length: totalEntries}, (_, i) => {
+      const side = s.isUnilateral ? (i % 2 === 0 ? 'L' : 'R') : null;
+      const isFirstSet = s.isUnilateral ? i < 2 : i === 0;
+      return {
+        side,
+        roundIdx: s.isUnilateral ? Math.floor(i / 2) + 1 : i + 1,
+        reps:   isFirstSet && s.recommendation && s.recommendation.reps   ? String(s.recommendation.reps)   : '',
+        weight: isFirstSet && s.recommendation && s.recommendation.weight != null ? String(s.recommendation.weight) : '',
+        rir: '', done: false, note: ''
+      };
+    });
+    return { ...s, setLogs };
+  });
+  sess.blocks = groupSlotsIntoBlocks(sess.slots);
+  sess.isAlt = true;
+  state.currentSession = sess;
+  state.currentSlotIdx = 0;
+  saveState();
+  go('session');
 }
 
 // =============================================================
@@ -558,11 +603,7 @@ function renderSupersetExercise(slot, slotIdx, tag) {
       ),
     ),
     slot.biasNote ? h('div', {class:'note-tip'}, slot.biasNote) : null,
-    rec && rec.weight != null
-      ? h('div', {class:'rec-tip'},
-          h('span', {class:'rec-arrow'}, rec.delta > 0 ? '↑' : (rec.delta < 0 ? '↓' : '→')),
-          h('span', null, h('strong', null, `Try ${rec.weight} ${state.settings.weightUnit}`), ' · ', h('span', {class:'muted small'}, rec.rationale)))
-      : null
+    renderRecTip(slot, rec),
   );
 }
 
@@ -600,16 +641,31 @@ function renderRoundRow(slot, slotIdx, roundIdx, tag) {
   );
 }
 
+// Returns the input fields appropriate for this slot's logMode.
+// Each entry is { key, label }.
+function inputFieldsForMode(logMode, weightUnit) {
+  switch (logMode) {
+    case 'bw_reps':    return [ { key:'reps', label:'Reps' }, { key:'rir', label:'RIR' } ];
+    case 'hold':       return [ { key:'reps', label:'Sec' }, { key:'rir', label:'Effort 0-5' } ];
+    case 'distance':   return [ { key:'reps', label:'Meters / trip' }, { key:'weight', label:`Load (${weightUnit})`, optional:true } ];
+    case 'time':       return [ { key:'reps', label:'Minutes' }, { key:'rir', label:'RPE 1-10' } ];
+    case 'quality':    return [ { key:'reps', label:'Quality reps' } ];   // No RIR — always max intent
+    case 'completion': return [];                                          // Just the Done button
+    case 'strength':
+    default:           return [ { key:'weight', label:`Wt (${weightUnit})` }, { key:'reps', label:'Reps' }, { key:'rir', label:'RIR' } ];
+  }
+}
+
 function renderSetRow(set, slot, slotIdx, setIdx, sideLabel) {
-  const measureLabel = slot.unit === 'seconds' ? 'Sec' : 'Reps';
+  const fields = inputFieldsForMode(slot.logMode || 'strength', state.settings.weightUnit);
   return h('div', {class:'set-row' + (set.done ? ' done' : '')},
     sideLabel ? h('span', {class:'side-badge'}, sideLabel) : null,
-    h('div', {class:'set-row-inputs'},
-      labeled(`Wt (${state.settings.weightUnit})`, inputCell(set, 'weight')),
-      labeled(measureLabel, inputCell(set, 'reps')),
-      labeled('RIR', inputCell(set, 'rir')),
-    ),
-    h('button', {class:'mini-btn' + (set.done?' done':''), onclick: () => logSet(slotIdx, setIdx)}, set.done ? '✓' : 'Log'),
+    fields.length
+      ? h('div', {class:'set-row-inputs', style:`grid-template-columns: repeat(${fields.length}, 1fr);`},
+          ...fields.map(f => labeled(f.label, inputCell(set, f.key)))
+        )
+      : h('div', {class:'set-row-completion muted small'}, 'Tap "Done" when finished.'),
+    h('button', {class:'mini-btn' + (set.done?' done':''), onclick: () => logSet(slotIdx, setIdx)}, set.done ? '✓ Done' : (slot.logMode === 'completion' ? 'Done' : 'Log')),
   );
 }
 function labeled(label, input) {
@@ -621,7 +677,6 @@ function labeled(label, input) {
 
 function renderSlot(slot, slotIdx) {
   const rec = slot.recommendation;
-  const measureLabel = slot.unit === 'seconds' ? 'Sec' : 'Reps';
   return h('div', {class:'card slot pri-' + slot.priority},
     h('div', {class:'slot-head'},
       h('div', null,
@@ -638,22 +693,69 @@ function renderSlot(slot, slotIdx) {
       ),
     ),
     slot.biasNote ? h('div', {class:'note-tip'}, slot.biasNote) : null,
-    rec && rec.weight != null
-      ? h('div', {class:'rec-tip'},
-          h('span', {class:'rec-arrow'}, rec.delta > 0 ? '↑' : (rec.delta < 0 ? '↓' : '→')),
-          h('span', null, h('strong', null, `Try ${rec.weight} ${state.settings.weightUnit}`), ' · ', h('span', {class:'muted small'}, rec.rationale)))
-      : (rec ? h('div', {class:'rec-tip muted small'}, rec.rationale) : null),
+    renderRecTip(slot, rec),
     // Sets — render each setLog. For unilateral, pairs of L/R show together.
-    slot.isUnilateral ? renderUnilateralSets(slot, slotIdx, measureLabel)
-                      : renderStandardSets(slot, slotIdx, measureLabel),
+    slot.isUnilateral ? renderUnilateralSets(slot, slotIdx)
+                      : renderStandardSets(slot, slotIdx),
+    h('div', {class:'log-mode-tag muted small'}, logModeHint(slot.logMode)),
   );
 }
 
-function renderStandardSets(slot, slotIdx, measureLabel) {
+function renderRecTip(slot, rec) {
+  if (!rec) return null;
+  const mode = slot.logMode || 'strength';
+  let primary = null;
+  if (mode === 'strength' && rec.weight != null) {
+    primary = `Try ${rec.weight} ${state.settings.weightUnit}`;
+  } else if (mode === 'bw_reps' && rec.reps != null) {
+    primary = `Try ${rec.reps} reps`;
+  } else if (mode === 'hold' && rec.reps != null) {
+    primary = `Try ${rec.reps}s`;
+  } else if (mode === 'distance' && rec.reps != null) {
+    primary = `Match ${rec.reps}m per trip`;
+  } else if (mode === 'time' && rec.reps != null) {
+    primary = `Match ${rec.reps} min`;
+  }
+  const arrow = rec.delta > 0 ? '↑' : (rec.delta < 0 ? '↓' : '→');
+  if (primary) {
+    return h('div', {class:'rec-tip'},
+      h('span', {class:'rec-arrow'}, arrow),
+      h('span', null, h('strong', null, primary), ' · ', h('span', {class:'muted small'}, rec.rationale))
+    );
+  }
+  // No quantitative target — show rationale only
+  return h('div', {class:'rec-tip muted small'}, rec.rationale);
+}
+
+function logModeHint(mode) {
+  switch (mode) {
+    case 'quality':    return '⚡ Quality / max-intent — no RIR. Full rest between reps.';
+    case 'distance':   return '📏 Distance mode — log meters per trip. Each row = one trip.';
+    case 'time':       return '⏱️ Time mode — log minutes + RPE (1=easy, 10=all-out).';
+    case 'hold':       return '⏳ Hold mode — log seconds + effort (0=failure, 5=easy).';
+    case 'bw_reps':    return '🤸 Bodyweight reps — just count + RIR.';
+    case 'completion': return '✓ Completion mode — practice and tick done.';
+    default:           return '';
+  }
+}
+
+function renderStandardSets(slot, slotIdx) {
+  // For non-strength modes, use the row layout (one row per set)
+  if (slot.logMode && slot.logMode !== 'strength') {
+    return h('div', {class:'set-rows-list'},
+      ...slot.setLogs.map((set, setIdx) =>
+        h('div', {class:'set-row-wrap'},
+          h('span', {class:'set-row-num'}, String(set.roundIdx || (setIdx+1))),
+          renderSetRow(set, slot, slotIdx, setIdx, null)
+        )
+      )
+    );
+  }
+  // Strength mode keeps the compact grid
   return h('div', {class:'set-grid'},
     h('div', {class:'set-header'}, 'Set'),
     h('div', {class:'set-header'}, `Wt (${state.settings.weightUnit})`),
-    h('div', {class:'set-header'}, measureLabel),
+    h('div', {class:'set-header'}, 'Reps'),
     h('div', {class:'set-header'}, 'RIR'),
     h('div', {class:'set-header'}, ''),
     ...slot.setLogs.flatMap((set, setIdx) => [
@@ -666,7 +768,7 @@ function renderStandardSets(slot, slotIdx, measureLabel) {
   );
 }
 
-function renderUnilateralSets(slot, slotIdx, measureLabel) {
+function renderUnilateralSets(slot, slotIdx) {
   // Pair L and R
   const rounds = [];
   for (let r = 0; r < slot.sets; r++) {
