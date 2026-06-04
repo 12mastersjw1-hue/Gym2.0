@@ -38,6 +38,7 @@ const defaultState = {
   },
   currentSession: null,
   currentSlotIdx: 0,         // guided UI: which slot we're on
+  swap: null,                // { slotIdx } when swap modal is open
   hydratedAt: null,
   pendingSync: [],           // entries logged while offline
 };
@@ -135,6 +136,11 @@ async function hydrateFromSheet() {
       await sheetsPost('appendLog', { entries: state.pendingSync });
       state.pendingSync = [];
     }
+    // Refresh the current session's done state from the latest log
+    if (state.currentSession) {
+      hydrateSessionFromLog(state.currentSession, state.log);
+      state.currentSlotIdx = findFirstIncompleteBlockIdx(state.currentSession);
+    }
     saveState();
     render();
   } catch (e) {
@@ -189,6 +195,15 @@ function pickToday() {
   return split[0]; // all logged → could advance
 }
 
+// Should we pre-fill the RIR field for this log mode?
+function rirAppliesTo(mode) {
+  return mode === 'strength' || mode === 'bw_reps' || mode === 'hold';
+}
+function defaultRirFor(slot) {
+  if (!rirAppliesTo(slot.logMode || 'strength')) return '';
+  return String(Math.round(slot.rir));
+}
+
 function startSession(dayCode) {
   if (!state.plan) {
     if (confirm('No locked plan yet. Generate a 6-week plan now?')) startMesocycle(state.daysPerWeek);
@@ -196,9 +211,10 @@ function startSession(dayCode) {
   }
   const sess = getPlannedSession(state.plan, dayCode, state.currentWeek, state.log);
   if (!sess) { alert('Could not find this session in the plan.'); return; }
+  sess.startedAt = Date.now();
   sess.slots = sess.slots.map(s => {
-    // Unilateral: 2× set entries (L and R per round). Otherwise: regular set list.
     const totalEntries = s.isUnilateral ? s.sets * 2 : s.sets;
+    const defaultRir = defaultRirFor(s);
     const setLogs = Array.from({length: totalEntries}, (_, i) => {
       const side = s.isUnilateral ? (i % 2 === 0 ? 'L' : 'R') : null;
       const isFirstSet = s.isUnilateral ? i < 2 : i === 0;
@@ -207,17 +223,109 @@ function startSession(dayCode) {
         roundIdx: s.isUnilateral ? Math.floor(i / 2) + 1 : i + 1,
         reps:   isFirstSet && s.recommendation && s.recommendation.reps   ? String(s.recommendation.reps)   : '',
         weight: isFirstSet && s.recommendation && s.recommendation.weight != null ? String(s.recommendation.weight) : '',
-        rir: '', done: false, note: ''
+        rir: defaultRir,
+        done: false, note: ''
       };
     });
     return { ...s, setLogs };
   });
-  // Group consecutive supersetGroup slots into blocks for the guided UI
   sess.blocks = groupSlotsIntoBlocks(sess.slots);
+  // Re-hydrate done state from the log in case we're resuming a session today
+  hydrateSessionFromLog(sess, state.log);
   state.currentSession = sess;
-  state.currentSlotIdx = 0; // now means block index in guided mode
+  state.currentSlotIdx = findFirstIncompleteBlockIdx(sess);
   saveState();
   go('session');
+}
+
+// Walk the session's setLogs and mark `done` for any set that already has
+// a matching entry in the log. Lets us resume after reload, switch device,
+// or close-and-reopen mid-session without losing place.
+function hydrateSessionFromLog(sess, log) {
+  if (!sess || !sess.slots) return sess;
+  const startedAt = sess.startedAt || 0;
+  for (const slot of sess.slots) {
+    for (let i = 0; i < slot.setLogs.length; i++) {
+      const set = slot.setLogs[i];
+      const round = set.roundIdx || (i + 1);
+      const found = log.find(e =>
+        e.exerciseId === slot.exercise.id &&
+        Number(e.setIdx) === round &&
+        ((set.side || '') === (e.side || '')) &&
+        new Date(e.date).getTime() >= startedAt
+      );
+      if (found) {
+        set.done = true;
+        if (!set.weight && found.weight)        set.weight = String(found.weight);
+        if (!set.reps && found.reps)            set.reps   = String(found.reps);
+        if (found.rir !== '' && found.rir != null) set.rir = String(found.rir);
+      }
+    }
+  }
+  return sess;
+}
+
+function findFirstIncompleteBlockIdx(sess) {
+  if (!sess) return 0;
+  const blocks = sess.blocks || groupSlotsIntoBlocks(sess.slots || []);
+  for (let i = 0; i < blocks.length; i++) {
+    if (blocks[i].slots.some(s => s.setLogs.some(x => !x.done))) return i;
+  }
+  return Math.max(0, blocks.length - 1);
+}
+
+// SWAP — replace the exercise in a session slot (e.g., squat rack busy).
+// Already-logged sets stay with their original exerciseId in the log.
+// Pending sets get the new exercise.
+function swapExercise(slotIdx, newExerciseId) {
+  const sess = state.currentSession;
+  if (!sess) return;
+  const slot = sess.slots[slotIdx];
+  const newEx = EX_BY_ID[newExerciseId];
+  if (!slot || !newEx) return;
+  const oldName = slot.exercise.name;
+  // Adopt the new exercise's metadata (unit, unilateral, logMode)
+  const wasUni = !!slot.isUnilateral;
+  const nowUni = !!newEx.unilateral;
+  slot.exercise = { ...newEx, _anchored: false };
+  slot.unit = newEx.unit || 'reps';
+  slot.logMode = newEx.logMode || 'strength';
+  slot.isUnilateral = nowUni;
+  // If unilateral-ness changed, regenerate the pending setLogs (keep done ones)
+  const donePrefixCount = slot.setLogs.filter(s => s.done).length;
+  if (wasUni !== nowUni) {
+    const totalEntries = nowUni ? slot.sets * 2 : slot.sets;
+    const defaultRir = defaultRirFor(slot);
+    const fresh = Array.from({length: totalEntries}, (_, i) => ({
+      side: nowUni ? (i % 2 === 0 ? 'L' : 'R') : null,
+      roundIdx: nowUni ? Math.floor(i / 2) + 1 : i + 1,
+      reps: '', weight: '', rir: defaultRir, done: false, note: ''
+    }));
+    // Preserve any done entries at the front
+    slot.setLogs = [...slot.setLogs.slice(0, donePrefixCount), ...fresh.slice(donePrefixCount)];
+  } else {
+    // Clear inputs for any not-yet-done sets so they can reflect the new exercise
+    const defaultRir = defaultRirFor(slot);
+    slot.setLogs.forEach((s, i) => {
+      if (!s.done) {
+        s.weight = '';
+        s.reps = '';
+        s.rir = defaultRir;
+      }
+    });
+  }
+  // Re-compute recommendation against the new exercise's history
+  slot.recommendation = recommendLoad(newEx.id, WEEKS[sess.week], state.log);
+  // Pre-fill first not-done set with the new recommendation
+  const firstPending = slot.setLogs.find(s => !s.done);
+  if (firstPending && slot.recommendation) {
+    if (slot.recommendation.weight != null) firstPending.weight = String(slot.recommendation.weight);
+    if (slot.recommendation.reps != null)   firstPending.reps   = String(slot.recommendation.reps);
+  }
+  // Note: leave block grouping alone — the slot just got a different exercise
+  state.swap = null;
+  saveState();
+  render();
 }
 
 // Combine consecutive slots with the same supersetGroup into one block
@@ -363,6 +471,72 @@ function render() {
     default:          body = renderHome();
   }
   root.appendChild(body);
+  if (state.swap != null) root.appendChild(renderSwapModal());
+}
+
+function openSwap(slotIdx) { state.swap = { slotIdx }; saveState(); render(); }
+function closeSwap() { state.swap = null; saveState(); render(); }
+
+function renderSwapModal() {
+  const sess = state.currentSession;
+  if (!sess || state.swap == null) return null;
+  const slot = sess.slots[state.swap.slotIdx];
+  if (!slot) return null;
+
+  // Build candidate list: same pattern, respect equipment + safety filters.
+  // Don't restrict by knee-safe etc if the planned exercise itself violates them.
+  // Surface all matching-pattern alternatives.
+  const slotPattern = (() => {
+    // Recover the original slot's pattern from the day template if possible
+    const dayTpl = sess.day && DAY_TEMPLATES[sess.day];
+    if (dayTpl) {
+      const found = dayTpl.slots.find(s => s.id === slot.slotId);
+      if (found) return found.pattern;
+    }
+    // Fallback: use the exercise's own pattern
+    return slot.exercise.pattern;
+  })();
+
+  const equipAvailable = state.settings.equipAvailable;
+  let candidates = EXERCISES.filter(ex => {
+    if (Array.isArray(slotPattern) ? !slotPattern.includes(ex.pattern) : ex.pattern !== slotPattern) return false;
+    if (equipAvailable && equipAvailable.length && !ex.equip.some(e => equipAvailable.includes(e))) return false;
+    return true;
+  });
+  // Move current exercise to bottom (no point swapping to itself)
+  candidates = candidates.filter(ex => ex.id !== slot.exercise.id);
+  // Sort by: same-mode first, then alphabetical
+  const curMode = slot.logMode || 'strength';
+  candidates.sort((a, b) => {
+    const am = a.logMode || 'strength', bm = b.logMode || 'strength';
+    if ((am === curMode) !== (bm === curMode)) return am === curMode ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  return h('div', {class:'modal-bg', onclick: (e) => { if (e.target.classList.contains('modal-bg')) closeSwap(); }},
+    h('div', {class:'modal'},
+      h('div', {class:'modal-head'},
+        h('h2', null, 'Swap exercise'),
+        h('button', {class:'mini-btn', onclick: closeSwap}, '✕'),
+      ),
+      h('p', {class:'muted small'}, `Current: ${slot.exercise.name}. Pick a replacement — already-logged sets stay attached to the original.`),
+      h('div', {class:'swap-list'},
+        candidates.length === 0
+          ? h('p', {class:'muted'}, 'No alternatives match this pattern + your equipment.')
+          : candidates.map(ex => h('button', {class:'swap-item', onclick: () => swapExercise(state.swap.slotIdx, ex.id)},
+              h('span', {class:'swap-item-name'}, ex.name),
+              h('span', {class:'swap-item-meta muted small'},
+                ex.equip.slice(0,3).join(' · '),
+                ex.unilateral ? ' · L/R' : '',
+                ex.calisthenics ? ' · calisthenics' : ''
+              ),
+            ))
+      ),
+      h('div', {class:'modal-foot'},
+        h('button', {class:'btn ghost', onclick: closeSwap}, 'Cancel'),
+      )
+    )
+  );
 }
 
 function renderHeader() {
@@ -463,8 +637,11 @@ function startAltSession(templateId) {
   applyFavorites();
   const sess = buildAltSession(templateId, state.currentWeek, state.history, state.settings, state.log);
   if (!sess) { alert('Could not build that template.'); return; }
+  sess.startedAt = Date.now();
+  sess.isAlt = true;
   sess.slots = sess.slots.map(s => {
     const totalEntries = s.isUnilateral ? s.sets * 2 : s.sets;
+    const defaultRir = defaultRirFor(s);
     const setLogs = Array.from({length: totalEntries}, (_, i) => {
       const side = s.isUnilateral ? (i % 2 === 0 ? 'L' : 'R') : null;
       const isFirstSet = s.isUnilateral ? i < 2 : i === 0;
@@ -473,15 +650,16 @@ function startAltSession(templateId) {
         roundIdx: s.isUnilateral ? Math.floor(i / 2) + 1 : i + 1,
         reps:   isFirstSet && s.recommendation && s.recommendation.reps   ? String(s.recommendation.reps)   : '',
         weight: isFirstSet && s.recommendation && s.recommendation.weight != null ? String(s.recommendation.weight) : '',
-        rir: '', done: false, note: ''
+        rir: defaultRir,
+        done: false, note: ''
       };
     });
     return { ...s, setLogs };
   });
   sess.blocks = groupSlotsIntoBlocks(sess.slots);
-  sess.isAlt = true;
+  hydrateSessionFromLog(sess, state.log);
   state.currentSession = sess;
-  state.currentSlotIdx = 0;
+  state.currentSlotIdx = findFirstIncompleteBlockIdx(sess);
   saveState();
   go('session');
 }
@@ -607,7 +785,10 @@ function renderSupersetExercise(slot, slotIdx, tag) {
       h('span', {class:'ss-tag'}, tag),
       h('div', null,
         h('div', {class:'slot-label'}, slot.label, slot.exercise._anchored ? h('span', {class:'anchor-badge'}, '⚓') : null),
-        h('h3', {class:'slot-ex'}, slot.exercise.name),
+        h('h3', {class:'slot-ex'},
+          slot.exercise.name,
+          h('button', {class:'swap-btn small', onclick: () => openSwap(slotIdx)}, '↻'),
+        ),
         h('div', {class:'muted small'}, `${slot.sets} × ${slot.repRange} · Tempo ${slot.tempo} · RIR ${slot.rir}`),
       ),
     ),
@@ -694,7 +875,10 @@ function renderSlot(slot, slotIdx) {
           slot.exercise._anchored ? h('span', {class:'anchor-badge'}, '⚓ ANCHOR') : null,
           slot.skippable ? h('span', {class:'skip-badge'}, 'Optional') : null,
         ),
-        h('h3', {class:'slot-ex'}, slot.exercise.name),
+        h('h3', {class:'slot-ex'},
+          slot.exercise.name,
+          h('button', {class:'swap-btn', title:'Swap exercise', onclick: () => openSwap(slotIdx)}, '↻ Swap'),
+        ),
       ),
       h('div', {class:'slot-meta'},
         h('div', null, `${slot.sets} × ${slot.repRange}`),
@@ -1111,6 +1295,13 @@ function checkboxRow(label, val, onChange) {
 //  BOOT
 // =============================================================
 document.addEventListener('DOMContentLoaded', async () => {
+  // Re-hydrate the in-progress session against the cached log so done flags
+  // and current slot are correct even before the sheet round-trip.
+  if (state.currentSession) {
+    hydrateSessionFromLog(state.currentSession, state.log);
+    state.currentSlotIdx = findFirstIncompleteBlockIdx(state.currentSession);
+    saveState();
+  }
   render();
   if (state.settings.sheetWebAppUrl) {
     // Auto-flush: if any sets were logged while offline / before URL was set,
