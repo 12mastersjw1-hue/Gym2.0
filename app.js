@@ -508,15 +508,22 @@ function blockPartial(block) {
 function renderSessionGuided(sess) {
   if (!sess.blocks) sess.blocks = groupSlotsIntoBlocks(sess.slots);
   const blocks = sess.blocks;
+  if (!blocks.length) {
+    return h('section', {class:'view'}, h('div', {class:'card'}, 'This session has no exercises. Back to ', h('a',{href:'#/home'}, 'Today'),'.'));
+  }
   const idx = Math.max(0, Math.min(state.currentSlotIdx, blocks.length - 1));
   const block = blocks[idx];
   const total = blocks.length;
   const done = blockComplete(block);
+  const titleName = sess.isAlt ? sess.name : (DAY_TEMPLATES[sess.day] ? DAY_TEMPLATES[sess.day].name : sess.name || sess.day);
+  const headerSub = sess.isAlt
+    ? `Alt session · Week ${sess.week} · ${sess.weekLabel}`
+    : `Week ${sess.week} · ${sess.weekLabel} · Day ${sess.day}`;
 
   return h('section', {class:'view'},
     h('div', {class:'card hero session-hero'},
-      h('div', {class:'hero-week'}, `Week ${sess.week} · ${sess.weekLabel} · Day ${sess.day}`),
-      h('h1', {class:'hero-title'}, DAY_TEMPLATES[sess.day].name),
+      h('div', {class:'hero-week'}, headerSub),
+      h('h1', {class:'hero-title'}, titleName),
       h('div', {class:'progress-bar'}, h('div', {class:'progress-fill', style:`width:${((idx + (done ? 1 : 0)) / total * 100).toFixed(0)}%`})),
       h('div', {class:'progress-text muted small'}, `Step ${idx + 1} of ${total}${block.type === 'superset' ? ' · SUPERSET' : ''}`),
     ),
@@ -555,10 +562,12 @@ function shortLabel(s) { return s.replace(/ \(.+\)/g, '').replace(/—.*/g, '').
 
 function renderSessionScroll(sess) {
   if (!sess.blocks) sess.blocks = groupSlotsIntoBlocks(sess.slots);
+  const titleName = sess.isAlt ? sess.name : (DAY_TEMPLATES[sess.day] ? DAY_TEMPLATES[sess.day].name : sess.name || sess.day);
+  const header = sess.isAlt ? titleName : `Day ${sess.day} — ${titleName}`;
   return h('section', {class:'view'},
     h('div', {class:'card hero session-hero'},
-      h('div', {class:'hero-week'}, `Week ${sess.week} · ${sess.weekLabel}`),
-      h('h1', {class:'hero-title'}, `Day ${sess.day} — ${DAY_TEMPLATES[sess.day].name}`),
+      h('div', {class:'hero-week'}, sess.isAlt ? `Alt session · Week ${sess.week} · ${sess.weekLabel}` : `Week ${sess.week} · ${sess.weekLabel}`),
+      h('h1', {class:'hero-title'}, header),
       h('p', {class:'hero-note'}, sess.weekNote),
     ),
     ...sess.blocks.map(block => renderBlock(block, sess)),
