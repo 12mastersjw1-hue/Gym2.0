@@ -107,6 +107,136 @@ const WEEKLY_SPLIT_4 = ['A', 'B', 'C', 'D'];           // 4-day version
 const WEEKLY_SPLIT_5 = ['A', 'B', 'C', 'D', 'E'];      // 5-day version (E = pilates)
 
 // =============================================================
+//  ALT TEMPLATES — quick-pick sessions for life-happens scenarios.
+//  These are ADDITIONAL to the main plan. Logs are tagged
+//  sessionType='alternative' so planned days stay independent.
+//  Exercises picked through the rotation engine for variety.
+// =============================================================
+const ALT_TEMPLATES = {
+  small_gym_upper: {
+    id: 'small_gym_upper',
+    name: 'Small Gym Upper',
+    icon: '🏋️',
+    duration: '40-50 min',
+    description: 'Work-gym friendly. DB + bench + cable + pull-up bar. Push/pull supersets.',
+    slots: [
+      { id: 'sgu1', label: 'Warm-Up — Shoulder Prep', pattern: 'prehab_shoulder', baseSets: 2, repRange: '12-15', tempo:'controlled', rest:'30s', priority:'warmup' },
+      { id: 'sgu2', label: 'Push (DB / Bench)',        pattern: 'push_h', baseSets: 4, repRange: '8-10', tempo:'2-1-1', rest:'90s', priority:'strength', supersetGroup:'SGU1', preferBiasIds: ['db_bench','incline_db_bench','weighted_pushup','larsen_press'] },
+      { id: 'sgu3', label: 'Pull (DB / Pull-up)',      pattern: 'pull_h', baseSets: 4, repRange: '8-10', tempo:'2-1-1', rest:'90s', priority:'strength', supersetGroup:'SGU1', preferBiasIds: ['single_arm_row','chest_supp_row','cable_row','inverted_row'] },
+      { id: 'sgu4', label: 'Vertical Push (DB)',       pattern: 'push_v', baseSets: 3, repRange: '8-12', tempo:'2-1-1', rest:'60s', priority:'hypertrophy', supersetGroup:'SGU2', preferBiasIds: ['db_shoulder_press','arnold_press','landmine_press'] },
+      { id: 'sgu5', label: 'Vertical Pull',            pattern: 'pull_v', baseSets: 3, repRange: '6-10', tempo:'2-1-1', rest:'60s', priority:'hypertrophy', supersetGroup:'SGU2' },
+      { id: 'sgu6', label: 'Core Circuit',             pattern: 'antiextension', baseSets: 3, repRange: '8-15', tempo:'2-1-1', rest:'45s', priority:'core' },
+      { id: 'sgu7', label: 'Neck / Pec Cool-Down',     pattern: 'mobility_neck', baseSets: 2, repRange: '30-45s', tempo:'-', rest:'15s', priority:'mobility', preferBiasIds:['doorway_chest_stretch','levator_stretch','chin_tucks'] },
+    ],
+  },
+  park_upper: {
+    id: 'park_upper',
+    name: 'Park Upper (Calisthenics)',
+    icon: '🌳',
+    duration: '35-45 min',
+    description: 'Bar + bodyweight. Pull-ups, dips, push-ups + skill work.',
+    slots: [
+      { id: 'pu1', label: 'Warm-Up — Hangs + Scaps',  pattern: 'mobility_neck', baseSets: 2, repRange: '30s', tempo:'-', rest:'30s', priority:'warmup', preferBiasIds:['dead_hang','scap_pullup'] },
+      { id: 'pu2', label: 'Skill Practice',            pattern: 'skill_cali', baseSets: 4, repRange: '3-5 OR 15s', tempo:'X', rest:'90s', priority:'power', biasNote:'Fresh nervous system — quality over quantity.' },
+      { id: 'pu3', label: 'Pull-Up Variant',           pattern: 'pull_v', baseSets: 4, repRange: '5-10', tempo:'2-1-2', rest:'90s', priority:'strength', supersetGroup:'PU1', preferBiasIds:['pullup','chin_up','archer_pullup','l_sit_pullup'] },
+      { id: 'pu4', label: 'Push (Dips / Push-Ups)',   pattern: 'push_h', baseSets: 4, repRange: '8-12', tempo:'2-1-1', rest:'90s', priority:'strength', supersetGroup:'PU1', preferBiasIds:['dips','weighted_pushup','archer_pushup','ring_pushup'] },
+      { id: 'pu5', label: 'Inverted Row / Lever',     pattern: 'pull_h', baseSets: 3, repRange: '8-12', tempo:'2-1-2', rest:'60s', priority:'hypertrophy', preferBiasIds:['inverted_row','false_grip_row','archer_row'] },
+      { id: 'pu6', label: 'Core / Hollow',            pattern: 'antiextension', baseSets: 3, repRange: '20-30s OR 10', tempo:'2-1-1', rest:'45s', priority:'core' },
+    ],
+  },
+  tennis_session: {
+    id: 'tennis_session',
+    name: 'Tennis (Match or Hit)',
+    icon: '🎾',
+    duration: '60-90 min',
+    description: 'Log the activity + RPE. Counts as athletic stimulus, not strength.',
+    slots: [
+      { id: 'ts1', label: 'Pre-Match Prep (5 min)',   pattern: 'mobility_hip', baseSets: 1, repRange: '5 min flow', tempo:'-', rest:'-', priority:'warmup' },
+      { id: 'ts2', label: 'Tennis Activity',           pattern: 'sport_session', baseSets: 1, repRange: 'see exercise', tempo:'-', rest:'-', priority:'aerobic', preferBiasIds:['tennis_match','tennis_hit'] },
+      { id: 'ts3', label: 'Cool-Down — Ankle + Hip',   pattern: 'mobility_hip', baseSets: 2, repRange: '45s', tempo:'-', rest:'15s', priority:'mobility' },
+    ],
+  },
+  football_session: {
+    id: 'football_session',
+    name: 'Football (Match or Training)',
+    icon: '⚽',
+    duration: '60-90 min',
+    description: 'Match, 5-a-side or training. Log total + RPE.',
+    slots: [
+      { id: 'fs1', label: 'Warm-Up (already on pitch usually)', pattern: 'mobility_hip', baseSets: 1, repRange: '5 min', tempo:'-', rest:'-', priority:'warmup' },
+      { id: 'fs2', label: 'Football Activity',         pattern: 'sport_session', baseSets: 1, repRange: 'see exercise', tempo:'-', rest:'-', priority:'aerobic', preferBiasIds:['football_match','football_training'] },
+      { id: 'fs3', label: 'Hamstring + Hip Cool-Down', pattern: 'mobility_hip', baseSets: 2, repRange: '45s', tempo:'-', rest:'15s', priority:'mobility' },
+    ],
+  },
+  easy_run: {
+    id: 'easy_run',
+    name: 'Easy Run / Zone 2',
+    icon: '🏃',
+    duration: '30-45 min',
+    description: 'Aerobic base. Nasal-breathing pace. Logs as time + RPE.',
+    slots: [
+      { id: 'er1', label: 'Zone 2 Aerobic',            pattern: 'sprint', baseSets: 1, repRange: '30-45 min', tempo:'-', rest:'-', priority:'aerobic', preferBiasIds:['zone2_30','tempo_run_100'] },
+    ],
+  },
+  pilates_mobility: {
+    id: 'pilates_mobility',
+    name: 'Pilates / Mobility Class',
+    icon: '🧘',
+    duration: '45-60 min',
+    description: 'Recovery / mobility day. Counts as Day E.',
+    slots: [
+      { id: 'pm1', label: 'Pilates or Mobility Flow',  pattern: 'sport_session', baseSets: 1, repRange: 'see exercise', tempo:'-', rest:'-', priority:'recovery', preferBiasIds:['pilates_class','mobility_flow'] },
+    ],
+  },
+};
+
+// Build a session from an alt template (mirrors buildSession's output shape)
+function buildAltSession(templateId, weekNum, history, settings, log) {
+  const tmpl = ALT_TEMPLATES[templateId];
+  if (!tmpl) return null;
+  const weekCfg = WEEKS[weekNum] || WEEKS[1];
+
+  const session = {
+    day: 'ALT',
+    altTemplate: templateId,
+    altName: tmpl.name,
+    week: weekNum,
+    name: tmpl.name,
+    focus: tmpl.description,
+    weekLabel: weekCfg.label,
+    rir: weekCfg.rir,
+    weekNote: `Alt session — doesn't affect planned-day completion.`,
+    slots: [],
+  };
+
+  for (const slot of tmpl.slots) {
+    const ex = rotateSlot(slot, weekNum, history || {}, settings);
+    if (!ex) continue;
+    const rec = recommendLoad(ex.id, weekCfg, log || []);
+    session.slots.push({
+      slotId: slot.id,
+      label: slot.label,
+      exercise: ex,
+      sets: slot.baseSets,
+      repRange: slot.repRange,
+      tempo: slot.tempo,
+      rest: slot.rest,
+      rir: weekCfg.rir,
+      priority: slot.priority,
+      biasNote: slot.biasNote || ex.note || '',
+      loadAdjustHint: weekCfg.loadMod,
+      recommendation: rec,
+      unit: ex.unit || 'reps',
+      logMode: ex.logMode || 'strength',
+      isUnilateral: !!ex.unilateral,
+      supersetGroup: slot.supersetGroup || null,
+      skippable: !!slot.skippable,
+    });
+  }
+  return session;
+}
+
+// =============================================================
 //  ROTATION ENGINE
 //  For each slot, pick an exercise that:
 //   - matches the pattern
@@ -233,6 +363,7 @@ function buildSession(dayCode, weekNum, history, settings, log /* optional past 
       loadAdjustHint: weekCfg.loadMod,
       recommendation: rec,
       unit: ex.unit || 'reps',                  // 'reps' or 'seconds'
+      logMode: ex.logMode || 'strength',        // strength/bw_reps/hold/distance/time/quality/completion
       isUnilateral: !!ex.unilateral,            // show L/R inputs
       supersetGroup: slot.supersetGroup || null, // e.g. 'A1' — pairs of slots
       skippable: !!slot.skippable,              // sled etc. can be skipped if no equipment
@@ -247,11 +378,63 @@ function buildSession(dayCode, weekNum, history, settings, log /* optional past 
 //  target RIR, applies week's load mod, and suggests next load + reps.
 // =============================================================
 function recommendLoad(exerciseId, weekCfg, log) {
-  // Filter to logged sets of this exercise that actually have a weight
-  const past = log.filter(e =>
-    e.exerciseId === exerciseId &&
-    e.weight !== '' && e.weight != null &&
-    !isNaN(Number(e.weight))
+  const ex = (typeof EX_BY_ID !== 'undefined') ? EX_BY_ID[exerciseId] : null;
+  const mode = (ex && ex.logMode) || 'strength';
+  const pastAll = log.filter(e => e.exerciseId === exerciseId);
+
+  // Non-strength modes use different recommendation logic
+  if (mode === 'quality') {
+    return { weight: null, reps: null, rationale: 'Max-intent reps. Quality over quantity — full rest between reps. No RIR.' };
+  }
+  if (mode === 'completion') {
+    return { weight: null, reps: null, rationale: 'Just get it done. Tick the box when complete.' };
+  }
+  if (mode === 'distance') {
+    const last = pastAll.sort((a,b) => new Date(b.date) - new Date(a.date))[0];
+    if (!last) return { weight: null, reps: null, rationale: 'First time — keep distance modest, intensity high. Each set = one trip.' };
+    return { weight: null, reps: Number(last.reps) || null, rationale: `Last: ${last.reps || '?'}m per trip × ${last.totalSets || '?'} trips. Match or +5m if it felt under-cooked.` };
+  }
+  if (mode === 'time') {
+    const last = pastAll.sort((a,b) => new Date(b.date) - new Date(a.date))[0];
+    if (!last) return { weight: null, reps: null, rationale: 'Log duration (min) + RPE (1-10). First time — go by feel.' };
+    return { weight: null, reps: Number(last.reps) || null, rationale: `Last: ${last.reps || '?'} min @ RPE ${last.rir || '?'}. Hold duration; target same RPE.` };
+  }
+  if (mode === 'hold') {
+    const past = pastAll.filter(e => e.reps !== '' && e.reps != null && !isNaN(Number(e.reps)));
+    if (!past.length) return { weight: null, reps: null, rationale: 'Log seconds held + effort (0=failure, 5=easy). Build up gradually.' };
+    past.sort((a,b) => new Date(b.date) - new Date(a.date));
+    const top = past.reduce((best, e) => Number(e.reps) > Number(best.reps) ? e : best, past[0]);
+    const lastSec = Number(top.reps);
+    const lastEffort = top.rir !== '' && top.rir != null ? Number(top.rir) : null;
+    let nextSec = lastSec;
+    if (lastEffort != null) {
+      if (lastEffort >= 3) nextSec = Math.round(lastSec * 1.15); // had a lot left → push +15%
+      else if (lastEffort >= 1) nextSec = lastSec + 3;          // small bump
+      else nextSec = lastSec;                                    // failure last time → hold
+    }
+    return { weight: null, reps: nextSec, rationale: `Last: ${lastSec}s @ effort ${lastEffort ?? '?'}. Try ${nextSec}s.`, delta: nextSec - lastSec };
+  }
+  if (mode === 'bw_reps') {
+    const past = pastAll.filter(e => e.reps !== '' && e.reps != null && !isNaN(Number(e.reps)));
+    if (!past.length) return { weight: null, reps: null, rationale: 'Bodyweight reps. First time — go for one shy of failure (RIR 1).' };
+    past.sort((a,b) => new Date(b.date) - new Date(a.date));
+    const top = past.reduce((best, e) => Number(e.reps) > Number(best.reps) ? e : best, past[0]);
+    const lastReps = Number(top.reps);
+    const lastRir = top.rir !== '' && top.rir != null ? Number(top.rir) : null;
+    const targetRir = weekCfg.rir;
+    let nextReps = lastReps;
+    if (lastRir != null) {
+      const gap = lastRir - targetRir;
+      if (gap >= 2) nextReps = lastReps + 2;
+      else if (gap >= 1) nextReps = lastReps + 1;
+      else if (gap <= -1) nextReps = Math.max(1, lastReps - 1);
+    }
+    return { weight: null, reps: nextReps, rationale: `Last: ${lastReps} reps @ RIR ${lastRir ?? '?'}. Try ${nextReps} reps at RIR ${targetRir}.`, delta: nextReps - lastReps };
+  }
+
+  // STRENGTH (default) — existing weight-based logic
+  const past = pastAll.filter(e =>
+    e.weight !== '' && e.weight != null && !isNaN(Number(e.weight))
   );
   if (!past.length) {
     return { weight: null, reps: null, rationale: 'First time on this exercise — pick a load that leaves you at target RIR.' };
@@ -386,13 +569,36 @@ function generateMesocyclePlan(settings, daysPerWeek = 4) {
 }
 
 // Pull a session out of the plan, and freshen up the load recommendations
-// against the current log.
+// against the current log. Also re-hydrates exercise + slot metadata so
+// plans saved under older code pick up new fields (supersetGroup, unit,
+// unilateral flag, skippable, etc.) automatically.
 function getPlannedSession(plan, dayCode, weekNum, log) {
   if (!plan || !plan[weekNum] || !plan[weekNum][dayCode]) return null;
-  const sess = JSON.parse(JSON.stringify(plan[weekNum][dayCode])); // deep copy
+  const sess = JSON.parse(JSON.stringify(plan[weekNum][dayCode]));
   const weekCfg = WEEKS[weekNum];
-  // Re-compute recommendation per slot against the latest log
+  const dayTemplate = DAY_TEMPLATES[dayCode];
+  const templateBySlotId = dayTemplate
+    ? Object.fromEntries(dayTemplate.slots.map(s => [s.id, s]))
+    : {};
+
   for (const slot of sess.slots) {
+    // Re-hydrate full exercise metadata from the pool (unit, unilateral, etc.)
+    const fullEx = EX_BY_ID[slot.exercise.id];
+    if (fullEx) {
+      const anchored = slot.exercise._anchored;
+      slot.exercise = Object.assign({}, fullEx, { _anchored: anchored });
+    }
+    // Re-hydrate slot-level fields from current template (supersets, etc.)
+    const tmpl = templateBySlotId[slot.slotId];
+    if (tmpl) {
+      if (tmpl.supersetGroup !== undefined) slot.supersetGroup = tmpl.supersetGroup;
+      if (tmpl.skippable !== undefined)     slot.skippable = tmpl.skippable;
+    }
+    // Derive (re-hydrated each session so older plans pick up new fields)
+    slot.unit = (slot.exercise && slot.exercise.unit) || 'reps';
+    slot.logMode = (slot.exercise && slot.exercise.logMode) || 'strength';
+    slot.isUnilateral = !!(slot.exercise && slot.exercise.unilateral);
+
     slot.recommendation = recommendLoad(slot.exercise.id, weekCfg, log || []);
   }
   return sess;
@@ -437,4 +643,6 @@ if (typeof window !== 'undefined') {
   window.getPlannedSession = getPlannedSession;
   window.dayHasAnyLog = dayHasAnyLog;
   window.loggedDaysInWeek = loggedDaysInWeek;
+  window.ALT_TEMPLATES = ALT_TEMPLATES;
+  window.buildAltSession = buildAltSession;
 }
