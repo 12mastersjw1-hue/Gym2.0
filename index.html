@@ -202,6 +202,21 @@
   .alt-duration { margin-top: 1px; }
   .alt-desc { margin-top: 4px; line-height: 1.35; }
 
+  /* Swap button + modal */
+  .swap-btn { margin-left: 10px; background: var(--card-hi); color: var(--muted); border:1px solid var(--border); border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 700; cursor: pointer; vertical-align: 2px; letter-spacing: 0.5px; }
+  .swap-btn:hover { background: var(--bg); color: var(--text); border-color: var(--accent-2); }
+  .swap-btn.small { padding: 2px 7px; font-size: 10px; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; display:flex; align-items:center; justify-content:center; padding: 16px; }
+  .modal { background: var(--card); border:1px solid var(--border); border-radius: 14px; padding: 18px; max-width: 480px; width: 100%; max-height: 80vh; display:flex; flex-direction: column; }
+  .modal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px; }
+  .modal-head h2 { margin: 0; font-size: 16px; }
+  .swap-list { flex: 1; overflow-y: auto; margin: 10px 0; display:flex; flex-direction:column; gap: 4px; padding: 4px; }
+  .swap-item { background: var(--card-hi); border:1px solid var(--border); border-radius: 8px; padding: 10px 12px; text-align: left; color: var(--text); cursor: pointer; display:flex; flex-direction:column; gap: 2px; }
+  .swap-item:hover { border-color: var(--accent); }
+  .swap-item-name { font-weight: 600; font-size: 14px; }
+  .swap-item-meta { font-size: 11px; }
+  .modal-foot { display:flex; justify-content:flex-end; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+
   .pri-strength { border-left: 3px solid var(--strength); }
   .pri-hypertrophy { border-left: 3px solid var(--hypertrophy); }
   .pri-power { border-left: 3px solid var(--power); }
@@ -260,9 +275,9 @@
 </head>
 <body>
   <main id="app"></main>
-  <script src="exercises.js?v=20260603e"></script>
-  <script src="program.js?v=20260603e"></script>
-  <script src="goals.js?v=20260603e"></script>
-  <script src="app.js?v=20260603e"></script>
+  <script src="exercises.js?v=20260603f"></script>
+  <script src="program.js?v=20260603f"></script>
+  <script src="goals.js?v=20260603f"></script>
+  <script src="app.js?v=20260603f"></script>
 </body>
 </html>
