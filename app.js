@@ -8,6 +8,9 @@
 //                    Sheet data overwrites local cache. If not, use cache.
 //   - Every write  : update local immediately, fire-and-forget POST to Sheets.
 //   - Plan         : pre-computed once per mesocycle and LOCKED (no muddling).
+//   - Sessions     : a day is only "done" when you tap Finish. Half-logged
+//                    sessions survive refresh/close and resume exactly
+//                    where you left off (completedDays + log hydration).
 // =============================================================
 
 const LS_KEY = 'fb_tn_trainer_v2';
@@ -23,6 +26,7 @@ const defaultState = {
   planGeneratedAt: null,
   baseline: { ...DEFAULT_BASELINE },
   goals: [],
+  completedDays: {},       // {[weekNum]: {[dayCode]: ISO}} — set ONLY by "Finish session"
   settings: {
     equipAvailable: ['barbell','dumbbell','kettlebell','cable','machine','bodyweight','band','medball','smith','park'],
     kneeSafeOnly: true,
@@ -34,13 +38,14 @@ const defaultState = {
     stylePref: 'calisthenics',
     anchors: {},
     unilateralBias: true,
-    guidedMode: true,        // new — show one slot at a time
+    guidedMode: true,        // show one slot at a time
   },
   currentSession: null,
-  currentSlotIdx: 0,         // guided UI: which slot we're on
+  currentSlotIdx: 0,         // guided UI: which block we're on
   swap: null,                // { slotIdx } when swap modal is open
   hydratedAt: null,
   pendingSync: [],           // entries logged while offline
+  _completedMigratedAt: null, // one-time backfill of completedDays from old logs
 };
 
 let state = loadState();
@@ -58,15 +63,62 @@ function loadState() {
     if (!merged.settings.sheetWebAppUrl && defaultState.settings.sheetWebAppUrl) {
       merged.settings.sheetWebAppUrl = defaultState.settings.sheetWebAppUrl;
     }
+    // `blocks` used to be persisted alongside `slots`; after a JSON round-trip
+    // they become independent copies and logging breaks. Always rebuild blocks
+    // from slots at render time instead.
+    if (merged.currentSession && merged.currentSession.blocks) delete merged.currentSession.blocks;
     return merged;
   } catch {
     return JSON.parse(JSON.stringify(defaultState));
   }
 }
-function saveState() { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+// NOTE: `blocks` is deliberately excluded — it holds references into `slots`
+// and must be rebuilt (groupSlotsIntoBlocks) after any deserialisation.
+function saveState() {
+  localStorage.setItem(LS_KEY, JSON.stringify(state, (k, v) => k === 'blocks' ? undefined : v));
+}
 
 function applyFavorites() {
   for (const ex of EXERCISES) ex.fav = state.settings.favorites.includes(ex.id);
+}
+
+// =============================================================
+//  COMPLETED DAYS — a planned day only counts as done when the user
+//  explicitly finishes the session. Synced to the Sheet's State tab.
+// =============================================================
+function isAltEntry(e) { return e.day === 'ALT' || e.sessionType === 'alternative'; }
+
+function isDayCompleted(weekNum, dayCode) {
+  const wk = state.completedDays && state.completedDays[weekNum];
+  return !!(wk && wk[dayCode]);
+}
+
+function markDayCompleted(weekNum, dayCode) {
+  if (!state.completedDays) state.completedDays = {};
+  if (!state.completedDays[weekNum]) state.completedDays[weekNum] = {};
+  state.completedDays[weekNum][dayCode] = new Date().toISOString();
+}
+
+// One-time migration: before explicit completion tracking, any logged day was
+// treated as done. Mark days whose LAST entry is from a previous calendar day
+// as completed (you're not coming back to them) — today's half-logged session
+// stays in progress.
+function backfillCompletedDays() {
+  const today = new Date().toISOString().slice(0, 10);
+  const latest = {};
+  for (const e of state.log) {
+    if (!e.day || !e.week || isAltEntry(e)) continue;
+    const k = e.week + '|' + e.day;
+    const d = String(e.date).slice(0, 10);
+    if (!latest[k] || d > latest[k]) latest[k] = d;
+  }
+  for (const [k, d] of Object.entries(latest)) {
+    const [w, day] = k.split('|');
+    if (d < today && !isDayCompleted(w, day)) {
+      if (!state.completedDays[w]) state.completedDays[w] = {};
+      state.completedDays[w][day] = d + 'T23:59:59.000Z';
+    }
+  }
 }
 
 // =============================================================
@@ -115,26 +167,51 @@ async function sheetsPost(action, body) {
   } catch (e) { return { ok: false, reason: String(e) }; }
 }
 
+// Composite key for de-duplicating log entries between Sheet and local cache.
+// Second-precision date — Sheets re-serialisation can drop milliseconds.
+function logEntryKey(e) {
+  return [String(e.date).slice(0, 19), e.exerciseId, e.setIdx, e.side || ''].join('|');
+}
+
 async function hydrateFromSheet() {
   if (!state.settings.sheetWebAppUrl) return;
   try {
     const r = await sheetsGet('getAll');
     if (!r || !r.ok) return;
-    // Sheet wins for log + plan + goals
-    if (Array.isArray(r.log))     state.log   = r.log;
+    // Sheet wins for log + plan + goals — but never silently drop local
+    // entries the Sheet doesn't have yet (a no-cors POST can fail invisibly).
+    if (Array.isArray(r.log)) {
+      const sheetKeys = new Set(r.log.map(logEntryKey));
+      const localOnly = state.log.filter(e => !sheetKeys.has(logEntryKey(e)));
+      state.log = r.log.concat(localOnly);
+      // Anything the Sheet is missing goes back into the outbox
+      for (const e of localOnly) {
+        if (!state.pendingSync.some(p => logEntryKey(p) === logEntryKey(e))) state.pendingSync.push(e);
+      }
+    }
     if (r.plan && typeof r.plan === 'object') state.plan  = r.plan;
     if (Array.isArray(r.goals) && r.goals.length) state.goals = r.goals;
+    let sheetHadCompleted = false;
     if (r.state && typeof r.state === 'object') {
       if (r.state.currentWeek)  state.currentWeek = Number(r.state.currentWeek);
       if (r.state.daysPerWeek)  state.daysPerWeek = Number(r.state.daysPerWeek);
       if (r.state.startDate)    state.startDate = r.state.startDate;
       if (r.state.baseline)     state.baseline = r.state.baseline;
+      if (r.state.completedDays && typeof r.state.completedDays === 'object') {
+        sheetHadCompleted = true;
+        // Merge (union) — keep local completions the Sheet hasn't seen yet
+        for (const [w, days] of Object.entries(r.state.completedDays)) {
+          if (!state.completedDays[w]) state.completedDays[w] = {};
+          Object.assign(state.completedDays[w], days);
+        }
+      }
     }
+    if (!sheetHadCompleted) backfillCompletedDays();
     state.hydratedAt = new Date().toISOString();
-    // Flush any pending writes
+    // Flush any pending writes (incl. entries re-queued above)
     if (state.pendingSync.length) {
-      await sheetsPost('appendLog', { entries: state.pendingSync });
-      state.pendingSync = [];
+      const pr = await sheetsPost('appendLog', { entries: state.pendingSync });
+      if (pr.ok) state.pendingSync = [];
     }
     // Refresh the current session's done state from the latest log
     if (state.currentSession) {
@@ -154,6 +231,7 @@ async function pushStateToSheet() {
     daysPerWeek: state.daysPerWeek,
     startDate: state.startDate,
     baseline: state.baseline,
+    completedDays: state.completedDays || {},
   }});
 }
 
@@ -169,6 +247,9 @@ async function startMesocycle(daysPerWeek) {
   state.plan = generateMesocyclePlan(state.settings, state.daysPerWeek);
   state.planGeneratedAt = new Date().toISOString();
   state.goals = buildGoals(state.baseline);
+  state.completedDays = {};
+  state.currentSession = null;
+  state.currentSlotIdx = 0;
   saveState();
   await sheetsPost('savePlan', { plan: state.plan });
   await sheetsPost('saveGoals', { goals: state.goals });
@@ -186,13 +267,13 @@ function regeneratePlanInPlace() {
   render();
 }
 
+// First planned day this week that hasn't been FINISHED. null = week complete.
 function pickToday() {
   const split = state.daysPerWeek === 5 ? WEEKLY_SPLIT_5 : WEEKLY_SPLIT_4;
-  const loggedToday = loggedDaysInWeek(state.log, state.currentWeek);
   for (const d of split) {
-    if (!loggedToday.includes(d)) return d;
+    if (!isDayCompleted(state.currentWeek, d)) return d;
   }
-  return split[0]; // all logged → could advance
+  return null;
 }
 
 // Should we pre-fill the RIR field for this log mode?
@@ -207,6 +288,16 @@ function defaultRirFor(slot) {
 function startSession(dayCode) {
   if (!state.plan) {
     if (confirm('No locked plan yet. Generate a 6-week plan now?')) startMesocycle(state.daysPerWeek);
+    return;
+  }
+  // RESUME — if there's already an in-progress session for this day+week,
+  // pick it up exactly where it was (preserves swaps, skips, typed values).
+  const cur = state.currentSession;
+  if (cur && !cur.isAlt && cur.day === dayCode && Number(cur.week) === Number(state.currentWeek)) {
+    hydrateSessionFromLog(cur, state.log);
+    state.currentSlotIdx = findFirstIncompleteBlockIdx(cur);
+    saveState();
+    go('session');
     return;
   }
   const sess = getPlannedSession(state.plan, dayCode, state.currentWeek, state.log);
@@ -230,7 +321,8 @@ function startSession(dayCode) {
     return { ...s, setLogs };
   });
   sess.blocks = groupSlotsIntoBlocks(sess.slots);
-  // Re-hydrate done state from the log in case we're resuming a session today
+  // Re-hydrate done state from the log in case some sets were already
+  // logged for this day (matched on week+day, so it survives refresh/close)
   hydrateSessionFromLog(sess, state.log);
   state.currentSession = sess;
   state.currentSlotIdx = findFirstIncompleteBlockIdx(sess);
@@ -238,9 +330,11 @@ function startSession(dayCode) {
   go('session');
 }
 
-// Walk the session's setLogs and mark `done` for any set that already has
-// a matching entry in the log. Lets us resume after reload, switch device,
-// or close-and-reopen mid-session without losing place.
+// Walk the session's setLogs and mark `done` for any set that already has a
+// matching entry in the log. Planned sessions match on week + day + slot +
+// exercise + set + side — robust across refresh, close, and devices.
+// Alt sessions can repeat within a week, so they only adopt entries from
+// this run (date >= startedAt).
 function hydrateSessionFromLog(sess, log) {
   if (!sess || !sess.slots) return sess;
   const startedAt = sess.startedAt || 0;
@@ -248,12 +342,19 @@ function hydrateSessionFromLog(sess, log) {
     for (let i = 0; i < slot.setLogs.length; i++) {
       const set = slot.setLogs[i];
       const round = set.roundIdx || (i + 1);
-      const found = log.find(e =>
-        e.exerciseId === slot.exercise.id &&
-        Number(e.setIdx) === round &&
-        ((set.side || '') === (e.side || '')) &&
-        new Date(e.date).getTime() >= startedAt
-      );
+      const found = log.find(e => {
+        if (e.exerciseId !== slot.exercise.id) return false;
+        if (Number(e.setIdx) !== round) return false;
+        if ((set.side || '') !== (e.side || '')) return false;
+        // Same exercise can appear in two slots of one session — disambiguate by slot label
+        if (e.slot && slot.label && e.slot !== slot.label) return false;
+        if (sess.isAlt) {
+          return isAltEntry(e)
+            && (!sess.altTemplate || e.altTemplate === sess.altTemplate)
+            && new Date(e.date).getTime() >= startedAt;
+        }
+        return Number(e.week) === Number(sess.week) && e.day === sess.day && !isAltEntry(e);
+      });
       if (found) {
         set.done = true;
         if (!set.weight && found.weight)        set.weight = String(found.weight);
@@ -267,9 +368,10 @@ function hydrateSessionFromLog(sess, log) {
 
 function findFirstIncompleteBlockIdx(sess) {
   if (!sess) return 0;
-  const blocks = sess.blocks || groupSlotsIntoBlocks(sess.slots || []);
+  // Always re-group from slots — persisted block copies go stale
+  const blocks = groupSlotsIntoBlocks(sess.slots || []);
   for (let i = 0; i < blocks.length; i++) {
-    if (blocks[i].slots.some(s => s.setLogs.some(x => !x.done))) return i;
+    if (!blockComplete(blocks[i])) return i;
   }
   return Math.max(0, blocks.length - 1);
 }
@@ -283,7 +385,6 @@ function swapExercise(slotIdx, newExerciseId) {
   const slot = sess.slots[slotIdx];
   const newEx = EX_BY_ID[newExerciseId];
   if (!slot || !newEx) return;
-  const oldName = slot.exercise.name;
   // Adopt the new exercise's metadata (unit, unilateral, logMode)
   const wasUni = !!slot.isUnilateral;
   const nowUni = !!newEx.unilateral;
@@ -306,7 +407,7 @@ function swapExercise(slotIdx, newExerciseId) {
   } else {
     // Clear inputs for any not-yet-done sets so they can reflect the new exercise
     const defaultRir = defaultRirFor(slot);
-    slot.setLogs.forEach((s, i) => {
+    slot.setLogs.forEach((s) => {
       if (!s.done) {
         s.weight = '';
         s.reps = '';
@@ -353,8 +454,11 @@ function groupSlotsIntoBlocks(slots) {
 
 function logSet(slotIdx, setIdx) {
   const sess = state.currentSession;
+  if (!sess) return;
   const slot = sess.slots[slotIdx];
+  if (!slot) return;
   const set = slot.setLogs[setIdx];
+  if (!set || set.done) return;   // already logged — prevents duplicate rows on double-tap
   set.done = true;
   const entry = {
     date: new Date().toISOString(),
@@ -394,19 +498,41 @@ function logSet(slotIdx, setIdx) {
   render();
 }
 
+// Count logged / total sets across a session (skipped slots excluded)
+function sessionSetCounts(sess) {
+  const sets = (sess.slots || []).filter(s => !s.skipped).flatMap(s => s.setLogs || []);
+  return { done: sets.filter(x => x.done).length, total: sets.length };
+}
+
 function finishSession() {
+  const sess = state.currentSession;
+  if (!sess) { go('home'); return; }
+  const { done, total } = sessionSetCounts(sess);
+  const pending = total - done;
+  if (pending > 0 && !confirm(`${pending} of ${total} sets aren't logged yet. Finish anyway?\n\n(If you're coming back to this workout, use the Home screen instead — it'll resume where you left off.)`)) return;
+  if (!sess.isAlt && sess.day && sess.day !== 'ALT') {
+    markDayCompleted(sess.week, sess.day);
+    pushStateToSheet();
+  }
   state.currentSession = null;
   state.currentSlotIdx = 0;
   saveState();
   go('home');
 }
 
+function discardSession() {
+  if (!confirm('Discard this session? Sets you already logged stay in History — the day just won\'t be marked as finished.')) return;
+  state.currentSession = null;
+  state.currentSlotIdx = 0;
+  saveState();
+  render();
+}
+
 function advanceWeek() {
-  const today = loggedDaysInWeek(state.log, state.currentWeek);
   const planned = state.plan && state.plan[state.currentWeek] ? Object.keys(state.plan[state.currentWeek]) : [];
-  const missing = planned.filter(d => !today.includes(d));
+  const missing = planned.filter(d => !isDayCompleted(state.currentWeek, d));
   if (missing.length > 0) {
-    if (!confirm(`Day(s) ${missing.join(', ')} of Week ${state.currentWeek} haven't been logged. Advance anyway?`)) return;
+    if (!confirm(`Day(s) ${missing.join(', ')} of Week ${state.currentWeek} haven't been finished. Advance anyway?`)) return;
   }
   if (state.currentWeek < 6) state.currentWeek += 1;
   else { alert('Mesocycle complete! Start a new 6-week block from Settings.'); return; }
@@ -416,7 +542,7 @@ function advanceWeek() {
 }
 
 function exportCSV() {
-  const headers = ['date','week','weekLabel','day','slot','exerciseId','exerciseName','setIdx','totalSets','reps','weight','unit','rir','targetRepRange','targetRir','note'];
+  const headers = ['date','week','weekLabel','day','slot','exerciseId','exerciseName','setIdx','totalSets','reps','weight','unit','rir','targetRepRange','targetRir','note','side','measureUnit','isUnilateral','supersetGroup','sessionType','altTemplate'];
   const rows = [headers.join(',')];
   for (const e of state.log) rows.push(headers.map(h => JSON.stringify(e[h] == null ? '' : e[h])).join(','));
   const blob = new Blob([rows.join('\n')], {type: 'text/csv'});
@@ -484,13 +610,13 @@ function renderSwapModal() {
   if (!slot) return null;
 
   // Build candidate list: same pattern, respect equipment + safety filters.
-  // Don't restrict by knee-safe etc if the planned exercise itself violates them.
-  // Surface all matching-pattern alternatives.
   const slotPattern = (() => {
-    // Recover the original slot's pattern from the day template if possible
-    const dayTpl = sess.day && DAY_TEMPLATES[sess.day];
-    if (dayTpl) {
-      const found = dayTpl.slots.find(s => s.id === slot.slotId);
+    // Recover the original slot's pattern from the day/alt template if possible
+    const tpl = sess.isAlt
+      ? (sess.altTemplate && ALT_TEMPLATES[sess.altTemplate])
+      : (sess.day && DAY_TEMPLATES[sess.day]);
+    if (tpl) {
+      const found = tpl.slots.find(s => s.id === slot.slotId);
       if (found) return found.pattern;
     }
     // Fallback: use the exercise's own pattern
@@ -503,7 +629,6 @@ function renderSwapModal() {
     if (equipAvailable && equipAvailable.length && !ex.equip.some(e => equipAvailable.includes(e))) return false;
     return true;
   });
-  // Move current exercise to bottom (no point swapping to itself)
   candidates = candidates.filter(ex => ex.id !== slot.exercise.id);
   // Sort by: same-mode first, then alphabetical
   const curMode = slot.logMode || 'strength';
@@ -580,7 +705,33 @@ function renderHome() {
 
   const split = state.daysPerWeek === 5 ? WEEKLY_SPLIT_5 : WEEKLY_SPLIT_4;
   const today = pickToday();
-  const loggedToday = loggedDaysInWeek(state.log, state.currentWeek);
+  const cur = state.currentSession;
+  const loggedDays = loggedDaysInWeek(state.log, state.currentWeek).filter(d => d !== 'ALT');
+  const completedCount = split.filter(d => isDayCompleted(state.currentWeek, d)).length;
+
+  // Resume card — front and centre when a session is mid-flight
+  let resumeCard = null;
+  if (cur) {
+    const { done, total } = sessionSetCounts(cur);
+    const title = cur.isAlt
+      ? cur.name
+      : `Day ${cur.day} — ${(DAY_TEMPLATES[cur.day] && DAY_TEMPLATES[cur.day].name) || ''}`;
+    const started = cur.startedAt ? new Date(cur.startedAt) : null;
+    const startedTxt = started ? `Started ${started.toLocaleDateString(undefined,{weekday:'short'})} ${started.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}` : '';
+    resumeCard = h('div', {class:'card resume-card'},
+      h('div', {class:'resume-info'},
+        h('div', {class:'hero-week'}, '⏳ WORKOUT IN PROGRESS'),
+        h('h2', {class:'resume-title'}, title),
+        h('div', {class:'progress-bar'}, h('div', {class:'progress-fill', style:`width:${total ? Math.round(done/total*100) : 0}%`})),
+        h('p', {class:'muted small'}, `${done}/${total} sets logged${startedTxt ? ' · ' + startedTxt : ''}`),
+      ),
+      h('div', {class:'row gap'},
+        h('button', {class:'btn', onclick: () => go('session')}, '▶ Resume'),
+        h('button', {class:'btn ghost', onclick: finishSession}, '✓ Finish'),
+        h('button', {class:'btn ghost', onclick: discardSession}, 'Discard'),
+      ),
+    );
+  }
 
   return h('section', {class:'view'},
     h('div', {class:'card hero'},
@@ -589,20 +740,30 @@ function renderHome() {
       h('p', {class:'hero-note'}, WEEKS[state.currentWeek].note),
       h('div', {class:'rir-pill'}, `Target RIR ${WEEKS[state.currentWeek].rir} · Load mod ${(WEEKS[state.currentWeek].loadMod*100>=0?'+':'')}${(WEEKS[state.currentWeek].loadMod*100).toFixed(1)}%`),
     ),
+    resumeCard,
     h('div', {class:'card'},
       h('h2', null, `Week ${state.currentWeek} sessions`),
-      h('p', {class:'muted small'}, `Tap a day to start. ${loggedToday.length}/${split.length} logged this week.`),
+      h('p', {class:'muted small'},
+        today === null
+          ? `All ${split.length} sessions finished — advance to Week ${Math.min(6, state.currentWeek + 1)} when you're ready. 🎉`
+          : `Tap a day to start (or resume). ${completedCount}/${split.length} finished this week.`),
       h('div', {class:'day-grid'},
         ...split.map(code => {
           const t = DAY_TEMPLATES[code];
-          const suggested = code === today;
-          const done = loggedToday.includes(code);
-          return h('button', {class:'day-card' + (suggested ? ' suggested' : '') + (done ? ' done' : ''),
+          const completed = isDayCompleted(state.currentWeek, code);
+          const inProgress = !completed && (
+            (cur && !cur.isAlt && cur.day === code && Number(cur.week) === Number(state.currentWeek)) ||
+            loggedDays.includes(code)
+          );
+          const suggested = code === today && !inProgress;
+          return h('button', {class:'day-card' + (suggested ? ' suggested' : '') + (completed ? ' done' : '') + (inProgress ? ' partial' : ''),
                               onclick: () => startSession(code)},
             h('div', {class:'day-code'}, code),
             h('div', {class:'day-name'}, t.name.replace(/—.*/,'').trim()),
             h('div', {class:'day-focus'}, t.focus),
-            done ? h('div', {class:'badge done-badge'}, '✓ done') : (suggested ? h('div', {class:'badge'}, 'Next up') : null),
+            completed ? h('div', {class:'badge done-badge'}, '✓ done')
+              : (inProgress ? h('div', {class:'badge partial-badge'}, '⏳ resume')
+              : (suggested ? h('div', {class:'badge'}, 'Next up') : null)),
           );
         })
       )
@@ -634,6 +795,11 @@ function renderHome() {
 }
 
 function startAltSession(templateId) {
+  // Warn rather than silently nuking an in-progress planned session
+  if (state.currentSession && !state.currentSession.isAlt) {
+    const { done } = sessionSetCounts(state.currentSession);
+    if (done > 0 && !confirm(`You have a Day ${state.currentSession.day} workout in progress. Starting an alt session replaces it (logged sets are kept). Continue?`)) return;
+  }
   applyFavorites();
   const sess = buildAltSession(templateId, state.currentWeek, state.history, state.settings, state.log);
   if (!sess) { alert('Could not build that template.'); return; }
@@ -676,15 +842,31 @@ function renderSession() {
 }
 
 function blockComplete(block) {
-  return block.slots.every(s => s.setLogs.every(x => x.done));
+  return block.slots.every(s => s.skipped || s.setLogs.every(x => x.done));
 }
 function blockPartial(block) {
-  const has = block.slots.some(s => s.setLogs.some(x => x.done));
+  const has = block.slots.some(s => !s.skipped && s.setLogs.some(x => x.done));
   return has && !blockComplete(block);
+}
+function blockSkipped(block) {
+  return block.slots.every(s => s.skipped);
+}
+
+function skipBlock(blocks, idx) {
+  const block = blocks[idx];
+  if (!block) return;
+  block.slots.forEach(s => { s.skipped = true; });
+  // Jump to the next thing that actually needs doing
+  const sess = state.currentSession;
+  const next = findFirstIncompleteBlockIdx(sess);
+  state.currentSlotIdx = next > idx || blockComplete(block) ? next : Math.min(blocks.length - 1, idx + 1);
+  saveState();
+  render();
 }
 
 function renderSessionGuided(sess) {
-  if (!sess.blocks) sess.blocks = groupSlotsIntoBlocks(sess.slots);
+  // ALWAYS rebuild blocks from slots — persisted copies desync after reload
+  sess.blocks = groupSlotsIntoBlocks(sess.slots);
   const blocks = sess.blocks;
   if (!blocks.length) {
     return h('section', {class:'view'}, h('div', {class:'card'}, 'This session has no exercises. Back to ', h('a',{href:'#/home'}, 'Today'),'.'));
@@ -693,6 +875,7 @@ function renderSessionGuided(sess) {
   const block = blocks[idx];
   const total = blocks.length;
   const done = blockComplete(block);
+  const doneBlocks = blocks.filter(blockComplete).length;
   const titleName = sess.isAlt ? sess.name : (DAY_TEMPLATES[sess.day] ? DAY_TEMPLATES[sess.day].name : sess.name || sess.day);
   const headerSub = sess.isAlt
     ? `Alt session · Week ${sess.week} · ${sess.weekLabel}`
@@ -702,13 +885,15 @@ function renderSessionGuided(sess) {
     h('div', {class:'card hero session-hero'},
       h('div', {class:'hero-week'}, headerSub),
       h('h1', {class:'hero-title'}, titleName),
-      h('div', {class:'progress-bar'}, h('div', {class:'progress-fill', style:`width:${((idx + (done ? 1 : 0)) / total * 100).toFixed(0)}%`})),
-      h('div', {class:'progress-text muted small'}, `Step ${idx + 1} of ${total}${block.type === 'superset' ? ' · SUPERSET' : ''}`),
+      h('div', {class:'progress-bar'}, h('div', {class:'progress-fill', style:`width:${(doneBlocks / total * 100).toFixed(0)}%`})),
+      h('div', {class:'progress-text muted small'}, `Step ${idx + 1} of ${total}${block.type === 'superset' ? ' · SUPERSET' : ''} · ${doneBlocks}/${total} blocks done`),
     ),
     renderBlock(block, sess),
     h('div', {class:'card row gap'},
       h('button', {class:'btn ghost', onclick: () => { state.currentSlotIdx = Math.max(0, idx - 1); saveState(); render(); }, disabled: idx === 0 ? 'disabled' : null}, '← Previous'),
-      block.slots.every(s => s.skippable) ? h('button', {class:'btn ghost', onclick: () => { state.currentSlotIdx = Math.min(blocks.length - 1, idx + 1); saveState(); render(); }}, 'Skip (no kit)') : null,
+      block.slots.every(s => s.skippable) && !blockSkipped(block)
+        ? h('button', {class:'btn ghost', onclick: () => skipBlock(blocks, idx)}, 'Skip (no kit)')
+        : null,
       idx < total - 1
         ? h('button', {class:'btn', onclick: () => { state.currentSlotIdx = idx + 1; saveState(); render(); }}, done ? 'Next →' : 'Skip to next →')
         : h('button', {class:'btn', onclick: finishSession}, '✓ Finish session'),
@@ -718,6 +903,7 @@ function renderSessionGuided(sess) {
       ...blocks.map((b, i) => {
         const d = blockComplete(b);
         const p = blockPartial(b);
+        const sk = blockSkipped(b);
         const label = b.type === 'superset'
           ? `${b.supersetGroup}: ${b.slots.map(s => shortLabel(s.label)).join(' + ')}`
           : b.slots[0].label;
@@ -730,7 +916,8 @@ function renderSessionGuided(sess) {
             b.type === 'superset' ? h('span', {class:'superset-mini'}, '↔') : null
           ),
           h('span', {class:'overview-ex muted small'}, exNames),
-          d ? h('span', {class:'overview-status'}, '✓') : (p ? h('span', {class:'overview-status partial'}, '○') : null)
+          sk ? h('span', {class:'overview-status skipped'}, '↷')
+             : (d ? h('span', {class:'overview-status'}, '✓') : (p ? h('span', {class:'overview-status partial'}, '○') : null))
         );
       })
     ),
@@ -739,7 +926,8 @@ function renderSessionGuided(sess) {
 function shortLabel(s) { return s.replace(/ \(.+\)/g, '').replace(/—.*/g, '').trim(); }
 
 function renderSessionScroll(sess) {
-  if (!sess.blocks) sess.blocks = groupSlotsIntoBlocks(sess.slots);
+  // ALWAYS rebuild blocks from slots — persisted copies desync after reload
+  sess.blocks = groupSlotsIntoBlocks(sess.slots);
   const titleName = sess.isAlt ? sess.name : (DAY_TEMPLATES[sess.day] ? DAY_TEMPLATES[sess.day].name : sess.name || sess.day);
   const header = sess.isAlt ? titleName : `Day ${sess.day} — ${titleName}`;
   return h('section', {class:'view'},
@@ -867,13 +1055,14 @@ function labeled(label, input) {
 
 function renderSlot(slot, slotIdx) {
   const rec = slot.recommendation;
-  return h('div', {class:'card slot pri-' + slot.priority},
+  return h('div', {class:'card slot pri-' + slot.priority + (slot.skipped ? ' skipped' : '')},
     h('div', {class:'slot-head'},
       h('div', null,
         h('div', {class:'slot-label'},
           slot.label,
           slot.exercise._anchored ? h('span', {class:'anchor-badge'}, '⚓ ANCHOR') : null,
           slot.skippable ? h('span', {class:'skip-badge'}, 'Optional') : null,
+          slot.skipped ? h('span', {class:'skip-badge skipped-badge'}, '↷ Skipped') : null,
         ),
         h('h3', {class:'slot-ex'},
           slot.exercise.name,
@@ -1053,9 +1242,9 @@ function baselineInput(key, label, unit) {
 
 function renderGoal(g) {
   const prog = goalProgress(g, state.log);
-  const pct = g.baseline != null && g.target > g.baseline && prog
+  const pct = Math.max(0, g.baseline != null && g.target > g.baseline && prog
     ? Math.min(100, Math.round(((prog.current - g.baseline) / (g.target - g.baseline)) * 100))
-    : (prog && g.baseline == null ? Math.min(100, Math.round((prog.current / g.target) * 100)) : 0);
+    : (prog && g.baseline == null ? Math.min(100, Math.round((prog.current / g.target) * 100)) : 0));
   const hit = prog && prog.current >= g.target;
   return h('div', {class:'goal-card' + (hit ? ' hit' : '')},
     h('div', {class:'goal-head'},
@@ -1104,7 +1293,10 @@ function renderProgram() {
       h('h2', null, `Week ${state.currentWeek} — locked plan`),
       ...Object.entries(state.plan[state.currentWeek] || {}).map(([dc, sess]) =>
         h('div', {class:'day-block'},
-          h('h3', null, `${dc} — ${sess.name}`),
+          h('h3', null,
+            `${dc} — ${sess.name}`,
+            isDayCompleted(state.currentWeek, dc) ? h('span', {class:'goal-hit-badge', style:'margin-left:8px'}, '✓ DONE') : null,
+          ),
           h('ul', null,
             ...sess.slots.map(sl => h('li', null,
               h('strong', null, sl.label + ': '),
@@ -1143,10 +1335,10 @@ function renderHistory() {
             h('td',null, e.date ? new Date(e.date).toLocaleString() : ''),
             h('td',null, 'W'+e.week),
             h('td',null, e.day),
-            h('td',null, e.exerciseName),
+            h('td',null, e.exerciseName + (e.side ? ` (${e.side})` : '')),
             h('td',null, `${e.setIdx}/${e.totalSets}`),
             h('td',null, e.weight ? `${e.weight} ${e.unit}` : ''),
-            h('td',null, e.reps || ''),
+            h('td',null, e.reps ? `${e.reps}${e.measureUnit === 'seconds' ? 's' : ''}` : ''),
             h('td',null, e.rir || ''),
           ))
         )
@@ -1158,6 +1350,8 @@ function renderHistory() {
 // =============================================================
 //  SETTINGS
 // =============================================================
+let favSearch = '';  // module-level so the search box survives grid refreshes
+
 function renderSettings() {
   const s = state.settings;
   return h('section', {class:'view'},
@@ -1184,7 +1378,16 @@ function renderSettings() {
       h('h2', null, 'Schedule'),
       h('label', {class:'field'},
         h('span',null,'Days per week'),
-        select(['4','5'], String(state.daysPerWeek), v => { state.daysPerWeek = Number(v); saveState(); render(); })
+        select(['4','5'], String(state.daysPerWeek), v => {
+          state.daysPerWeek = Number(v);
+          saveState();
+          // The locked plan was generated for the old split — offer to rebuild
+          if (state.plan && confirm(`Switched to ${v} days/week. Regenerate the plan so the weekly split matches? (Logs and current week are kept.)`)) {
+            regeneratePlanInPlace();
+            return;
+          }
+          render();
+        })
       ),
       h('label', {class:'field'},
         h('span',null,'Current week'),
@@ -1212,6 +1415,13 @@ function renderSettings() {
       ...renderAnchorSlots(s),
     ),
     h('div', {class:'card'},
+      h('h2', null, 'Favourite exercises'),
+      h('p', {class:'muted small'}, 'Favourites get a rotation boost (+8) so they show up more often. Tap to toggle. Applies the next time the plan is (re)generated.'),
+      h('input', {type:'search', class:'fav-search', placeholder:'Search exercises…', value: favSearch,
+        oninput: (e) => { favSearch = e.target.value; refreshFavGrid(); }}),
+      h('div', {class:'fav-grid', id:'fav-grid'}, ...buildFavPills()),
+    ),
+    h('div', {class:'card'},
       h('h2', null, 'Equipment + safety'),
       h('div', {class:'tag-grid'},
         ...['barbell','dumbbell','kettlebell','cable','machine','smith','bodyweight','band','medball','park'].map(eq =>
@@ -1230,6 +1440,41 @@ function renderSettings() {
       h('button', {class:'btn ghost', onclick: () => { if (confirm('Wipe local state? Sheet data is untouched.')) { localStorage.removeItem(LS_KEY); state = loadState(); render(); }}}, 'Wipe local cache'),
     ),
   );
+}
+
+function buildFavPills() {
+  const q = favSearch.trim().toLowerCase();
+  const list = q
+    ? EXERCISES.filter(ex => ex.name.toLowerCase().includes(q) || ex.pattern.includes(q))
+    : EXERCISES.slice();
+  // Favourites first, then alphabetical
+  const favs = new Set(state.settings.favorites);
+  list.sort((a, b) => {
+    const af = favs.has(a.id), bf = favs.has(b.id);
+    if (af !== bf) return af ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  return list.map(ex => {
+    const on = favs.has(ex.id);
+    return h('button', {class:'tag-pill' + (on ? ' on' : ''), type:'button',
+      onclick: () => {
+        if (on) state.settings.favorites = state.settings.favorites.filter(id => id !== ex.id);
+        else state.settings.favorites.push(ex.id);
+        saveState();
+        applyFavorites();
+        refreshFavGrid();
+      }},
+      (on ? '★ ' : '') + ex.name
+    );
+  });
+}
+
+// Refresh just the favourites grid so the search box keeps focus
+function refreshFavGrid() {
+  const el = document.getElementById('fav-grid');
+  if (!el) return;
+  el.innerHTML = '';
+  for (const p of buildFavPills()) el.appendChild(p);
 }
 
 function renderAnchorSlots(s) {
@@ -1295,6 +1540,13 @@ function checkboxRow(label, val, onChange) {
 //  BOOT
 // =============================================================
 document.addEventListener('DOMContentLoaded', async () => {
+  // One-time migration: derive completedDays from old logs (days last touched
+  // before today count as finished; today's half-logged day stays open).
+  if (!state._completedMigratedAt) {
+    backfillCompletedDays();
+    state._completedMigratedAt = new Date().toISOString();
+    saveState();
+  }
   // Re-hydrate the in-progress session against the cached log so done flags
   // and current slot are correct even before the sheet round-trip.
   if (state.currentSession) {
