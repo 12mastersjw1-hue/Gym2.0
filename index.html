@@ -66,15 +66,25 @@
   .rir-pill { display:inline-block; background: rgba(0,214,143,0.15); color: var(--accent); padding: 6px 12px; border-radius: 999px; font-weight: 600; font-size: 12px; }
   .session-hero .hero-title { font-size: 22px; }
 
+  /* Resume in-progress workout card */
+  .resume-card { border-color: var(--accent-2); border-left: 3px solid var(--accent-2); display:flex; flex-wrap:wrap; gap: 14px; align-items:center; justify-content:space-between; }
+  .resume-card .hero-week { color: var(--accent-2); }
+  .resume-info { flex: 1; min-width: 220px; }
+  .resume-title { margin: 4px 0 2px; font-size: 17px; }
+  .resume-card .progress-bar { margin: 8px 0 4px; }
+  .resume-card .progress-fill { background: var(--accent-2); }
+
   /* Day grid */
   .day-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
   .day-card { background: var(--card-hi); border:1px solid var(--border); border-radius: 12px; padding: 14px; text-align:left; color: var(--text); cursor: pointer; transition: transform .1s ease, border-color .1s ease; position:relative; }
   .day-card:hover { border-color: var(--accent); transform: translateY(-1px); }
   .day-card.suggested { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0,214,143,0.2); }
+  .day-card.partial { border-color: var(--accent-2); box-shadow: 0 0 0 2px rgba(255,181,71,0.18); }
   .day-code { font-weight: 800; color: var(--accent); font-size: 11px; letter-spacing: 2px; }
   .day-name { margin: 4px 0 2px; font-weight: 700; font-size: 14px; }
   .day-focus { color: var(--muted); font-size: 12px; }
   .badge { position:absolute; top:8px; right:8px; background: var(--accent); color: var(--bg); font-size: 10px; padding: 2px 6px; border-radius: 999px; font-weight: 800; }
+  .badge.partial-badge { background: var(--accent-2); }
 
   /* Buttons */
   .btn { background: var(--accent); color: var(--bg); border: none; padding: 10px 14px; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 13px; }
@@ -102,6 +112,10 @@
   .day-card.done { opacity: 0.55; }
   .badge.done-badge { background: var(--accent-2); }
 
+  /* Skipped slot state */
+  .slot.skipped { opacity: 0.6; }
+  .skip-badge.skipped-badge { background: rgba(255,181,71,0.2); color: var(--accent-2); }
+
   /* Guided UI */
   .slot.guided { padding: 22px 24px; }
   .slot.guided .slot-ex { font-size: 22px; margin-bottom: 4px; }
@@ -122,6 +136,7 @@
   .overview-ex { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .overview-status { color: var(--accent-2); font-weight: 700; font-size: 14px; }
   .overview-status.partial { color: var(--muted); }
+  .overview-status.skipped { color: var(--muted); }
   .btn[disabled] { opacity: 0.4; cursor: not-allowed; }
 
   /* Goals */
@@ -258,8 +273,10 @@
   .check-row { display:flex; align-items: flex-start; gap: 10px; padding: 6px 0; color: var(--text); }
   .check-row input { margin-top: 3px; }
   .tag-grid, .fav-grid { display:flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .fav-grid { max-height: 260px; overflow-y: auto; padding: 4px; border:1px solid var(--border); border-radius: 10px; }
-  .tag-pill { display:inline-flex; align-items:center; gap: 6px; background: var(--card-hi); border:1px solid var(--border); border-radius: 999px; padding: 6px 12px; font-size: 12px; cursor: pointer; transition: background .1s ease; }
+  .fav-grid { max-height: 260px; overflow-y: auto; padding: 6px; border:1px solid var(--border); border-radius: 10px; align-content: flex-start; }
+  .fav-search { width: 100%; background: var(--bg); color: var(--text); border:1px solid var(--border); border-radius: 8px; padding: 9px 12px; font-size: 14px; margin-top: 8px; }
+  .fav-search:focus { outline: none; border-color: var(--accent); }
+  .tag-pill { display:inline-flex; align-items:center; gap: 6px; background: var(--card-hi); border:1px solid var(--border); border-radius: 999px; padding: 6px 12px; font-size: 12px; cursor: pointer; transition: background .1s ease; color: var(--text); }
   .tag-pill.on { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 700; }
   .tag-pill input { appearance: none; width:0; height:0; margin:0; }
 
@@ -275,9 +292,9 @@
 </head>
 <body>
   <main id="app"></main>
-  <script src="exercises.js?v=20260603f"></script>
-  <script src="program.js?v=20260603f"></script>
-  <script src="goals.js?v=20260603f"></script>
-  <script src="app.js?v=20260603f"></script>
+  <script src="exercises.js?v=20260611a"></script>
+  <script src="program.js?v=20260611a"></script>
+  <script src="goals.js?v=20260611a"></script>
+  <script src="app.js?v=20260611a"></script>
 </body>
 </html>
