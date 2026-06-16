@@ -267,6 +267,44 @@ function regeneratePlanInPlace() {
   render();
 }
 
+// Slots that should stay constant week-to-week so you can actually progress
+// the load: the sled warm-ups (used every leg day), the squat + hinge mains,
+// the single-leg split-squat bedrock, posterior chain, and the main upper
+// push/pull/skill. Everything else keeps rotating — those read their
+// recommendation from same-pattern history via recommendLoad's fallback.
+const MAIN_LIFT_SLOTS = ['a0', 'a1', 'a2', 'c0', 'c1', 'c2', 'b0', 'b1', 'b2', 'b3', 'b4'];
+
+// Bump this whenever the anchor preset changes so the new set is pushed to
+// the user's saved state once. (v1: original mains. v2: back squat main,
+// Bulgarian split squat, back-and-forth sled both leg days.)
+const ANCHOR_PRESET_VERSION = 2;
+
+// Pin the main lifts and rebuild the plan so they repeat every week (true
+// progressive overload). Runs after the Sheet hydrate so it operates on the
+// live plan, then re-saves the regenerated plan. Skips if a workout is
+// mid-flight (it'll apply on the next clean load). Re-applies once per preset
+// version; between bumps, any anchors you change in Settings stick.
+function maybeAnchorMainLifts() {
+  if ((state.settings._mainLiftsAnchorVersion || 0) >= ANCHOR_PRESET_VERSION) return;
+  if (!state.plan) return;                            // no plan to lock yet
+  if (state.currentSession) return;                   // don't disrupt a live session
+  const preset = suggestedAnchors(state.settings.stylePref);
+  if (!state.settings.anchors) state.settings.anchors = {};
+  let changed = false;
+  for (const sid of MAIN_LIFT_SLOTS) {
+    if (preset[sid] && state.settings.anchors[sid] !== preset[sid]) {
+      state.settings.anchors[sid] = preset[sid];
+      changed = true;
+    }
+  }
+  state.settings._mainLiftsAnchorVersion = ANCHOR_PRESET_VERSION;
+  saveState();
+  if (changed) {
+    console.log('Updating anchored lifts + regenerating plan for progressive overload.');
+    regeneratePlanInPlace();   // preserves current week / log / goals / completedDays
+  }
+}
+
 // First planned day this week that hasn't been FINISHED. null = week complete.
 function pickToday() {
   const split = state.daysPerWeek === 5 ? WEEKLY_SPLIT_5 : WEEKLY_SPLIT_4;
@@ -1563,6 +1601,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const r = await sheetsPost('appendLog', { entries: state.pendingSync });
       if (r.ok) { state.pendingSync = []; saveState(); render(); }
     }
-    hydrateFromSheet();
+    await hydrateFromSheet();
   }
+  // After we have the live plan, lock the main lifts once so they progress
+  // week to week (no-op if already done, no plan, or a session is in flight).
+  maybeAnchorMainLifts();
 });
