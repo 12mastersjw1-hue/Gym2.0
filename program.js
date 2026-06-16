@@ -377,10 +377,70 @@ function buildSession(dayCode, weekNum, history, settings, log /* optional past 
 //  Looks at most recent log of this exercise, compares last RIR to
 //  target RIR, applies week's load mod, and suggests next load + reps.
 // =============================================================
+// Prior log entries that train the SAME movement pattern as `ex` and use the
+// same logMode (so the numbers are comparable). Lets a rotated-in exercise
+// inherit progression from the lift it replaced instead of reading as
+// "first time" every week.
+function sameMovementHistory(ex, mode, log) {
+  if (!ex || typeof EX_BY_ID === 'undefined') return [];
+  const patternHit = (a, b) => {
+    if (a == null || b == null) return false;
+    const aa = Array.isArray(a) ? a : [a];
+    const bb = Array.isArray(b) ? b : [b];
+    return aa.some(p => bb.includes(p));
+  };
+  return log.filter(e => {
+    if (e.exerciseId === ex.id) return false;
+    const cand = EX_BY_ID[e.exerciseId];
+    if (!cand) return false;
+    if ((cand.logMode || 'strength') !== mode) return false;
+    return patternHit(ex.pattern, cand.pattern);
+  });
+}
+
+// Public entry point. Prefers exact-exercise history; if there's none (the
+// rotation swapped a new exercise into this slot), it borrows progression
+// from the most recent same-movement lift so recommendations + pre-fill keep
+// working across weekly rotation.
 function recommendLoad(exerciseId, weekCfg, log) {
   const ex = (typeof EX_BY_ID !== 'undefined') ? EX_BY_ID[exerciseId] : null;
   const mode = (ex && ex.logMode) || 'strength';
-  const pastAll = log.filter(e => e.exerciseId === exerciseId);
+  const exact = log.filter(e => e.exerciseId === exerciseId);
+
+  // We've logged THIS exact exercise before → recommend straight from it.
+  if (exact.length || !ex) return recommendFromHistory(mode, weekCfg, exact);
+
+  // No history for this exercise yet. Borrow from the same movement pattern.
+  const borrowed = sameMovementHistory(ex, mode, log);
+  if (borrowed.length) {
+    const recent = borrowed.slice().sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+    const src = EX_BY_ID[recent.exerciseId];
+    const rec = recommendFromHistory(mode, weekCfg, borrowed);
+    if (rec) {
+      rec.basedOn = src ? src.name : null;
+      if (mode === 'strength') {
+        // Absolute load doesn't transfer cleanly between variants (back squat
+        // ≠ goblet squat), so show it as a reference and DON'T auto-fill a
+        // potentially-wrong weight. Reps/RIR target is still useful.
+        rec.rationale = `↪ No log yet for this lift. Closest movement: ${src ? src.name : '?'} ${rec.lastWeight ?? '?'}×${rec.lastReps ?? '?'} @ RIR ${rec.lastRir ?? '?'}. Pick a load that lands at RIR ${weekCfg.rir}.`;
+        rec.weight = null;
+        rec.delta = 0;
+      } else if (src) {
+        // Reps / seconds / minutes / metres transfer fine between same-pattern
+        // bodyweight & conditioning variants → inherit the target + pre-fill.
+        rec.rationale = `↪ Based on ${src.name} (same movement). ` + rec.rationale;
+      }
+    }
+    return rec;
+  }
+
+  // Truly first time for this movement.
+  return recommendFromHistory(mode, weekCfg, exact);
+}
+
+// Core recommender: given the already-filtered relevant past entries, compute
+// the next-session target for the given logMode.
+function recommendFromHistory(mode, weekCfg, pastAll) {
 
   // Non-strength modes use different recommendation logic
   if (mode === 'quality') {
@@ -390,9 +450,19 @@ function recommendLoad(exerciseId, weekCfg, log) {
     return { weight: null, reps: null, rationale: 'Just get it done. Tick the box when complete.' };
   }
   if (mode === 'distance') {
-    const last = pastAll.sort((a,b) => new Date(b.date) - new Date(a.date))[0];
+    const sorted = pastAll.slice().sort((a,b) => new Date(b.date) - new Date(a.date));
+    const last = sorted[0];
     if (!last) return { weight: null, reps: null, rationale: 'First time — keep distance modest, intensity high. Each set = one trip.' };
-    return { weight: null, reps: Number(last.reps) || null, rationale: `Last: ${last.reps || '?'}m per trip × ${last.totalSets || '?'} trips. Match or +5m if it felt under-cooked.` };
+    // Carry the sled LOAD forward too (most recent trip that recorded one), not
+    // just the distance — so the weight field pre-fills from last session.
+    const lastLoaded = sorted.find(e => e.weight !== '' && e.weight != null && !isNaN(Number(e.weight)));
+    const load = lastLoaded ? Number(lastLoaded.weight) : null;
+    return {
+      weight: load,
+      reps: Number(last.reps) || null,
+      rationale: `Last: ${last.reps || '?'}m/trip${load != null ? ' @ ' + load + ' load' : ''} × ${last.totalSets || '?'} trips. Match the load; add distance or load if it felt easy.`,
+      delta: 0,
+    };
   }
   if (mode === 'time') {
     const last = pastAll.sort((a,b) => new Date(b.date) - new Date(a.date))[0];
@@ -508,9 +578,12 @@ function candidatesForSlot(slot, equipAvailable) {
 function suggestedAnchors(stylePref) {
   const base = {
     // Day A
-    a1: stylePref === 'barbell' ? 'back_squat' : 'front_squat',
+    a0: 'sled_drag_back_forth',         // sled every leg day, both directions
+    a1: 'back_squat',                   // knee-dominant main — no front-rack load cap
+    a2: 'bulgarian_ss',                 // single-leg bedrock, weight-tracked
     a3: 'sl_calf_raise_db',
     // Day C
+    c0: 'sled_drag_back_forth',         // sled every leg day, both directions
     c1: stylePref === 'barbell' ? 'conv_deadlift' : 'rdl',
     c2: 'nordic_machine',  // prefer machine for easy load adjustment
     c4: 'seated_calf_raise',
