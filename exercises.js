@@ -202,6 +202,7 @@ const EXERCISES = [
   { id: 'sled_push_heavy',     name: 'Heavy Sled Push (low handles)',    pattern: 'warmup_sled',  equip: ['sled'],           knee_safe: true,  ankle_load: 'mid', sport: 'football', diff: 3, fav: false, note: 'PAP for sprints + squats. 4-6 × 15m. Heavy load, full drive.' },
   { id: 'sled_drag_backward',  name: 'Backward Sled Drag (VMO + quad)',  pattern: 'warmup_sled',  equip: ['sled'],           knee_safe: true,  ankle_load: 'mid', sport: 'football', diff: 2, fav: false, note: '3-5 × 20m. Sit low, walk backward. Spanish-squat-on-the-move.' },
   { id: 'sled_drag_forward',   name: 'Forward Sled Drag (hamstring)',    pattern: 'warmup_sled',  equip: ['sled'],           knee_safe: true,  ankle_load: 'mid', sport: 'football', diff: 2, fav: false, note: '3-5 × 20m. Walk forward, drag steady. Hamstring blood + ankle prep.' },
+  { id: 'sled_drag_back_forth',name: 'Sled Drag — Backward + Forward',   pattern: 'warmup_sled',  equip: ['sled'],           knee_safe: true,  ankle_load: 'mid', sport: 'football', diff: 2, fav: false, note: 'Every leg day. Alternate trips: drag backward (VMO/quad, knee armour) then forward (hamstring + ankle). 3-5 × 20m each way. Log each trip.' },
   { id: 'sled_march',          name: 'Sled March (knee drive)',          pattern: 'warmup_sled',  equip: ['sled'],           knee_safe: true,  ankle_load: 'mid', sport: 'football', diff: 2, fav: false, note: 'Moderate load. High knees, big steps. 3 × 20m.' },
   { id: 'sled_sprint',         name: 'Sled Sprint (light, max effort)',  pattern: 'warmup_sled',  equip: ['sled'],           knee_safe: true,  ankle_load: 'high', sport: 'football', diff: 3, fav: false, note: '5-6 × 10-15m. LIGHT load, max acceleration.' },
   { id: 'sled_rope_pull',      name: 'Sled Rope Pull (seated)',          pattern: 'warmup_sled',  equip: ['sled'],           knee_safe: true,  ankle_load: 'low', sport: 'general',  diff: 2, fav: false, note: 'Upper back + grip while legs anchor. 3 sets per side.' },
@@ -263,7 +264,7 @@ const SECONDS_IDS = new Set([
   // Neck/upper back mobility
   'brettzel','doorway_chest_stretch','levator_stretch','foam_roll_thoracic',
   // Sled (distance/time based)
-  'sled_push_heavy','sled_drag_backward','sled_drag_forward','sled_march','sled_sprint','sled_rope_pull',
+  'sled_push_heavy','sled_drag_backward','sled_drag_forward','sled_drag_back_forth','sled_march','sled_sprint','sled_rope_pull',
   // Conditioning
   'zone2_30','intervals_4x4','tempo_run_100','yoyo_ir1','sprint_30m','hill_sprint','sprint_repeats_40',
   'shuttle_5_10_5','cone_t_drill','ladder_drills','cod_box',
@@ -300,7 +301,7 @@ const QUALITY_IDS = new Set([
 ]);
 const DISTANCE_IDS = new Set([
   // Sled + sprint (each "rep" = one trip)
-  'sled_push_heavy','sled_drag_backward','sled_drag_forward','sled_march',
+  'sled_push_heavy','sled_drag_backward','sled_drag_forward','sled_drag_back_forth','sled_march',
   'sled_sprint','sled_rope_pull',
   'sprint_30m','hill_sprint','sprint_repeats_40',
 ]);
